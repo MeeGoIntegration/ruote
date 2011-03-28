@@ -12,7 +12,7 @@ Homepage: http://ruote.rubyforge.org
 
 Package: ruby-ruote
 Architecture: all
-Depends: ${shlibs:Depends}, ${misc:Depends}
+Depends: ${shlibs:Depends}, ${misc:Depends}, ruby-sourcify (>= 0.4.2), ruby-rufus-json (>= 0.2.5), ruby-rufus-cloche (>= 0.1.20), ruby-rufus-dollar (>= 1.0.4), ruby-rufus-mnemo (>= 1.1.0), ruby-rufus-scheduler (>= 2.0.8), ruby-rufus-treechecker (>= 1.0.4), ruby-yajl
 # sourcify (= 0.4.2), rufus-json (>= 0.2.5), rufus-cloche (>= 0.1.20), rufus-dollar (>= 1.0.4), rufus-mnemo (>= 1.1.0), rufus-scheduler (>= 2.0.8), rufus-treechecker (>= 1.0.4), rake (>= 0), json (>= 0), builder (>= 0), mailtrap (>= 0)
 Description: an open source Ruby workflow engine
  .\n ruote is an open source Ruby workflow engine
