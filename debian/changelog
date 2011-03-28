@@ -1,5 +1,6 @@
-ruote (2.2.0-1) UNRELEASED; urgency=low
+ruote (2.2.0-2) testing; urgency=low
 
-  * Initial release (Closes: #nnnn)
+  * Initial release based on gem2deb
+  * Update dependencies
 
  -- David Greaves <david@ash.dgreaves.com>  Sat, 26 Mar 2011 14:53:11 +0000
