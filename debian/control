@@ -1,20 +1,21 @@
-Source: ruote
+Source: ruby-ruote
 Section: ruby
 Priority: optional
 Maintainer: Debian Ruby Extras Maintainers <pkg-ruby-extras-maintainers@lists.alioth.debian.org>
 Uploaders:  <>
 DM-Upload-Allowed: yes
-Build-Depends: debhelper (>= 7.0.50~), gem2deb (>= 0.1.0)
+Build-Depends: debhelper (>= 7.0.50~), gem2deb (>= 0.2.1)
 Standards-Version: 3.9.1
-#Vcs-Git: git://git.debian.org/collab-maint/libnet-jabber-loudmouth-perl.git
-#Vcs-Browser: http://git.debian.org/?p=collab-maint/libnet-jabber-loudmouth-perl.git;a=summary
+#Vcs-Git: git://git.debian.org/pkg-ruby-extras/ruby-ruote.git
+#Vcs-Browser: http://git.debian.org/?p=pkg-ruby-extras/ruby-ruote;a=summary
 Homepage: http://ruote.rubyforge.org
+XS-Ruby-Versions: all
 
 Package: ruby-ruote
 Architecture: all
-Depends: ${shlibs:Depends}, ${misc:Depends}, ruby-sourcify (>= 0.4.2), ruby-rufus-json (>= 0.2.5), ruby-rufus-cloche (>= 0.1.20), ruby-rufus-dollar (>= 1.0.4), ruby-rufus-mnemo (>= 1.1.0), ruby-rufus-scheduler (>= 2.0.8), ruby-rufus-treechecker (>= 1.0.4), ruby-yajl
-# sourcify (= 0.4.2), rufus-json (>= 0.2.5), rufus-cloche (>= 0.1.20), rufus-dollar (>= 1.0.4), rufus-mnemo (>= 1.1.0), rufus-scheduler (>= 2.0.8), rufus-treechecker (>= 1.0.4), rake (>= 0), json (>= 0), builder (>= 0), mailtrap (>= 0)
+Depends: ${shlibs:Depends}, ${misc:Depends}, ruby1.8 | ruby-interpreter, ruby-sourcify (>= 0.4.2), ruby-rufus-cloche (>= 0.1.20), ruby-rufus-dollar (>= 1.0.4), ruby-rufus-mnemo (>= 1.1.0), ruby-rufus-scheduler (>= 2.0.8), ruby-rufus-treechecker (>= 1.0.4), ruby-yajl
+# sourcify (= 0.4.2, runtime), rufus-json (>= 0.2.5, runtime), rufus-cloche (>= 0.1.20, runtime), rufus-dollar (>= 1.0.4, runtime), rufus-mnemo (>= 1.1.0, runtime), rufus-scheduler (>= 2.0.8, runtime), rufus-treechecker (>= 1.0.4, runtime), rake (>= 0, development), json (>= 0, development), builder (>= 0, development), mailtrap (>= 0, development)
 Description: an open source Ruby workflow engine
- .\n ruote is an open source Ruby workflow engine
- .\n
-
+ .
+ ruote is an open source Ruby workflow engine
+ .
