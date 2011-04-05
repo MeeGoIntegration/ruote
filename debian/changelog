@@ -1,4 +1,4 @@
-ruote (2.2.0-2) testing; urgency=low
+ruby-ruote (2.2.0-2) testing; urgency=low
 
   * Initial release based on gem2deb
   * Update dependencies
