@@ -17,7 +17,7 @@
 
 # norootforbuild
 Name:           rubygem-ruote
-Version:        2.2.0
+Version:        2.2.0nearly1
 Release:        0
 %define mod_name ruote
 #
@@ -31,8 +31,8 @@ BuildRequires:  rubygem-sourcify >= 0.4.2
 Requires:       rubygem-sourcify >= 0.4.2
 BuildRequires:  rubygem-rufus-json >= 0.2.2
 Requires:       rubygem-rufus-json >= 0.2.2
-BuildRequires:  rubygem-rufus-cloche >= 0.1.17
-Requires:       rubygem-rufus-cloche >= 0.1.17
+BuildRequires:  rubygem-rufus-cloche >= 0.1.21
+Requires:       rubygem-rufus-cloche >= 0.1.21
 BuildRequires:  rubygem-rufus-dollar 
 Requires:       rubygem-rufus-dollar 
 BuildRequires:  rubygem-rufus-mnemo >= 1.1.0
