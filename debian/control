@@ -13,7 +13,7 @@ XS-Ruby-Versions: all
 
 Package: ruby-ruote
 Architecture: all
-Depends: ${shlibs:Depends}, ${misc:Depends}, ruby1.8 | ruby-interpreter, ruby-sourcify (>= 0.4.2), ruby-rufus-json (>= 0.2.5), ruby-rufus-cloche (>= 0.1.21), ruby-rufus-dollar (>= 1.0.4), ruby-rufus-mnemo (>= 1.1.0), ruby-rufus-scheduler (>= 2.0.8), ruby-rufus-treechecker (>= 1.0.4), ruby-yajl
+Depends: ${shlibs:Depends}, ${misc:Depends}, ruby1.8 | ruby-interpreter, ruby-sourcify (>= 0.4.2), ruby-rufus-json (>= 0.2.5), ruby-rufus-cloche (>= 0.1.21), ruby-rufus-dollar (>= 1.0.4), ruby-rufus-mnemo (>= 1.1.0), ruby-rufus-scheduler (>= 2.0.8), ruby-rufus-treechecker (>= 1.0.6), ruby-yajl, ruby-parselet
 # sourcify (= 0.4.2, runtime), rufus-json (>= 0.2.5, runtime), rufus-cloche (>= 0.1.20, runtime), rufus-dollar (>= 1.0.4, runtime), rufus-mnemo (>= 1.1.0, runtime), rufus-scheduler (>= 2.0.8, runtime), rufus-treechecker (>= 1.0.4, runtime), rake (>= 0, development), json (>= 0, development), builder (>= 0, development), mailtrap (>= 0, development)
 Description: an open source Ruby workflow engine
  .

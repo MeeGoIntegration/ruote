@@ -1,3 +1,11 @@
+ruby-ruote (2.2.0nearly1-2) unstable; urgency=low
+
+  * Pull to 32e89010cfa8a7deb8d209d779c29f5c5f90d39e
+  * parslet 1.2.0
+  * rufus-treechecker 1.0.6
+
+ -- David Greaves <david@dgreaves.com>  Mon, 16 May 2011 22:27:30 +0100
+
 ruby-ruote (2.2.0nearly1-1) unstable; urgency=low
 
   * Pre-release of 2.2.1
