@@ -8,7 +8,6 @@
 
 require File.join(File.dirname(__FILE__), '..', 'test_helper.rb')
 
-require_json
 require 'ruote/reader/radial'
 
 
@@ -23,7 +22,9 @@ class RadialReaderTest < Test::Unit::TestCase
       @error = e
     end
     def to_s
-      "error while parsing >#{@string}< : #{@error.to_s}"
+      s = "error while parsing >#{@string}< : #{@error.to_s}"
+      s << "\n\n#{@error.error_tree}" if @error.respond_to?(:error_tree)
+      s
     end
     def backtrace
       @error.backtrace
@@ -73,12 +74,12 @@ class RadialReaderTest < Test::Unit::TestCase
   assert_read(
     [ 'define', { 'a' => 'AA', 'b' => 'BB' }, [] ],
     'define a: AA, b: BB # whatever')
-  assert_read(
-    [ 'define', { 'a' => 'A A', 'b' => 'B B' }, [] ],
-    'define a: A A, b: B B')
-  assert_read(
-    [ 'define', { 'a' => 'A A', 'b' => 2.0 }, [] ],
-    'define a: A A, b: 2.0')
+  #assert_read(
+  #  [ 'define', { 'a' => 'A A', 'b' => 'B B' }, [] ],
+  #  'define a: A A, b: B B')
+  #assert_read(
+  #  [ 'define', { 'a' => 'A A', 'b' => 2.0 }, [] ],
+  #  'define a: A A, b: 2.0')
   assert_read(
     [ 'define', { 'work_flow' => 'foxtrot' }, [] ],
     'define work-flow: foxtrot')
@@ -108,6 +109,12 @@ class RadialReaderTest < Test::Unit::TestCase
     [ 'echo', { 'lima' => nil, 'a' => [ 1, 2, 3 ] }, [] ],
     'echo "lima", a: [ 1, 2, 3 ] # whatever')
   assert_read(
+    [ 'echo', { 'name' => 'mike', 'a' => { 'b' => 'c' } }, [] ],
+    "echo name: 'mike', a: { b => c }")
+  assert_read(
+    [ 'echo', { 'name' => 'november', 'a' => { 'b' => 'c', 'd' => 'e' } }, [] ],
+    "echo name: 'november', a: { b => c, 'd' => \"e\" }")
+  assert_read(
     [ 'echo', { 'oscar' => nil, 'a' => nil }, [] ],
     'echo "oscar", a: null')
 
@@ -120,20 +127,31 @@ class RadialReaderTest < Test::Unit::TestCase
     [ 'define', { 'name' => 'kilo', 'a' => 'b' }, [] ],
     "define name: 'kilo', a: b")
   assert_read(
-    [ 'echo', { 'name' => 'mike', 'a' => { 'b' => 'c', 'd' => 'e' } }, [] ],
-    "echo name: 'mike', a: { :b => :c, 'd' => \"e\" }")
-  assert_read(
-    [ 'echo', { 'november' => nil, 'a' => [ 'b', 'c' ], 'd' => [ 1, 2, true ] }, [] ],
-    "echo 'november', a: [ :b, :c ], d: [ 1, 2, true ]")
-  assert_read(
     [ 'echo', { 'papa' => nil, 'a' => nil }, [] ],
     'echo "papa", a: nil # whatever')
-  assert_read(
-    [ 'echo', { 'quebec' => nil, 'b' => [ 'A', 'B' ] }, [] ],
-    'echo "quebec", b: %w[ A B ] # whatever')
+  #assert_read(
+  #  [ 'echo', { 'quebec' => nil, 'b' => [ 'A', 'B' ] }, [] ],
+  #  'echo "quebec", b: %w[ A B ] # whatever')
 
   #
   # more complete tests
+
+  def test_error_reporting
+
+    e = nil
+
+    begin
+      Ruote::RadialReader.read(%{
+        "nada"
+      })
+    rescue => e
+    end
+
+    assert_equal Parslet::ParseFailed, e.class
+    assert_not_nil e.error_tree
+
+    #puts e.error_tree
+  end
 
   def test_error_on_empty_string
 
@@ -189,16 +207,16 @@ process_definition name: "nada"
 
     tree = Ruote::RadialReader.read(%{
       process_definition "zama"
-        echo """
+        echo "
           nada
-        """, ol: korrect
-        echo """
+        ", ol: korrect
+        echo '
           #nada
-        """
+        '
         # just a comment
-        echo """
+        echo "
           'hola'
-        """
+        "
     })
 
     assert_equal(
@@ -281,6 +299,21 @@ process_definition name: "nada"
         [ 'participant', { 'nada' => nil, 'fix' => '/nada/' }, [] ]
       ]],
       tree)
+  end
+
+  def test_array
+
+    pdef = %{
+      filter in: [ { field: f, type: bool, empty: false } ]
+    }
+
+    assert_equal(
+      [
+        'filter',
+        { 'in' => [ { 'empty' => false, 'type' => 'bool', 'field' => 'f' } ] },
+        []
+      ],
+      Ruote::RadialReader.read(pdef))
   end
 end
 

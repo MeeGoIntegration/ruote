@@ -26,9 +26,10 @@
 require 'uri'
 require 'open-uri'
 require 'rufus/json'
-require 'ruote/reader/ruby_dsl' # just making sure it's loaded
 require 'ruote/reader/xml'
+require 'ruote/reader/json'
 require 'ruote/reader/radial'
+require 'ruote/reader/ruby_dsl' # just making sure it's loaded
 require 'ruote/util/subprocess'
 
 
@@ -40,6 +41,38 @@ module Ruote
   # Can reader XML, JSON, Ruby (and more) process definition representations.
   #
   class Reader
+
+    # This error is emitted by the reader when it failed to read a process
+    # definition (passed as a string).
+    #
+    class Error < ArgumentError
+
+      attr_reader :definition
+      attr_reader :ruby, :radial, :xml, :json
+
+      def initialize(definition)
+        @definition = definition
+      end
+
+      def <<(args)
+        type, error = args
+        type = type.to_s.match(/^Ruote::(.+)Reader$/)[1].downcase
+        instance_variable_set("@#{type}", error)
+      end
+
+      # Returns the most likely error cause...
+      #
+      def cause
+        @ruby || @radial || @xml || @json
+      end
+
+      def inspect
+        s = "#<#{self.class}: "
+        [ @ruby, @radial, @xml, @json ].each { |e| s << e.inspect; s << ' ' }
+        s << '>'
+        s
+      end
+    end
 
     def initialize(context)
 
@@ -66,17 +99,25 @@ module Ruote
         return read(open(definition).read)
       end
 
-      tree =
-        (ruby_eval(definition) rescue nil) ||
-        (RadialReader.read(definition) rescue nil) ||
-        (XmlReader.read(definition) rescue nil) ||
-        (Rufus::Json.decode(definition) rescue nil)
+      tree = nil
+      error = Error.new(definition)
 
-      raise ArgumentError.new(
-        "failed to read processs definition of class #{definition.class}"
-      ) unless Ruote.is_tree?(tree)
+      [
+        Ruote::RubyReader, Ruote::RadialReader,
+        Ruote::XmlReader, Ruote::JsonReader
+      ].each do |reader|
 
-      tree
+        next if tree
+        next unless reader.understands?(definition)
+
+        begin
+          tree = reader.read(definition, @context.treechecker)
+        rescue => e
+          error << [ reader, e ]
+        end
+      end
+
+      tree || raise(error)
     end
 
     # Class method for parsing process definition (XML, Ruby, from file or
@@ -138,16 +179,37 @@ module Ruote
     def self.to_ruby(tree, level=0)
 
       expname = tree[0]
-
       expname = 'Ruote.process_definition' if level == 0 && expname == 'define'
 
-      s = "#{'  ' * level}#{expname}#{atts_to_ruby(tree[1])}"
+      s =
+        '  ' * level +
+        expname +
+        atts_to_x(tree[1]) { |k, v|
+          ":#{k} => #{v.inspect}"
+        }
 
       return "#{s}\n" if tree[2].empty?
 
       s << " do\n"
       tree[2].each { |child| s << to_ruby(child, level + 1) }
       s << "#{'  ' * level}end\n"
+
+      s
+    end
+
+    def self.to_radial(tree, level=0)
+
+      s =
+        '  ' * level +
+        tree[0] +
+        atts_to_x(tree[1]) { |k, v|
+          "#{k}: #{v.inspect}"
+        }
+
+      return "#{s}\n" if tree[2].empty?
+
+      s << "\n"
+      tree[2].each { |child| s << to_radial(child, level + 1) }
 
       s
     end
@@ -169,28 +231,6 @@ module Ruote
     end
 
     protected
-
-    # Evaluates the ruby string in the code, but at fist, thanks to the
-    # treechecker, makes sure it doesn't code malicious ruby code (at least
-    # tries very hard).
-    #
-    def ruby_eval(s)
-
-      @context.treechecker.definition_check(s)
-      eval(s)
-
-    rescue Exception => e
-      #
-      # have to catch everything (SyntaxError included)
-
-      #puts '=' * 80
-      #p s
-      #puts '-' * 80
-      #puts e
-      #e.backtrace.each { |l| puts l }
-
-      raise ArgumentError.new('probably not ruby')
-    end
 
     # Minimal test. Used by #read.
     #
@@ -216,11 +256,9 @@ module Ruote
       end
     end
 
-    # As used by to_ruby.
+    # As used by to_ruby and to_radial
     #
-    def self.atts_to_ruby(atts)
-
-      return '' if atts.empty?
+    def self.atts_to_x(atts, &block)
 
       s = []
 
@@ -228,7 +266,8 @@ module Ruote
       s << t.first.inspect if t
 
       s = atts.inject(s) { |a, (k, v)|
-        a << ":#{k} => #{v.inspect}" if t.nil? || k != t.first
+        #a << ":#{k} => #{v.inspect}" if t.nil? || k != t.first
+        a << block.call(k, v) if t.nil? || k != t.first
         a
       }.join(', ')
 

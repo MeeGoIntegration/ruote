@@ -23,49 +23,26 @@
 #++
 
 
-module Ruote::Exp
+module Ruote
 
   #
-  # Saves the current workitem fields into a variable or into a field.
+  # Turns an XML string into a process definition tree.
   #
-  #   save :to_field => 'old_workitem'
-  #     # or
-  #   save :to => 'f:old_workitem'
-  #     #
-  #     # saves a copy of the fields of the current workitem into itself,
-  #     # in the field named 'old_workitem'
-  #
-  #   save :to_variable => '/wix'
-  #     # or
-  #   save :to => 'v:/wix'
-  #     #
-  #     # saves a copy of the current workitem in the varialbe 'wix' at
-  #     # the root of the process
-  #
-  # See also the 'restore' expression (Ruote::Exp::RestoreExpression).
-  #
-  class SaveExpression < FlowExpression
+  module JsonReader
 
-    names :save
+    # Returns true if s seems to be a JSON string
+    #
+    def self.understands?(s)
 
-    def apply
-
-      to_v, to_f = determine_tos
-
-      if to_v
-        set_variable(to_v, h.applied_workitem['fields'])
-      elsif to_f
-        set_f(to_f, Ruote.fulldup(h.applied_workitem['fields']))
-      #else
-        # do nothing
-      end
-
-      reply_to_parent(h.applied_workitem)
+      s = s.strip
+      true
     end
 
-    def reply(workitem)
+    # Simply parses the JSON string
+    #
+    def self.read(s, opt=nil)
 
-      # empty, never called
+      Rufus::Json.decode(s)
     end
   end
 end

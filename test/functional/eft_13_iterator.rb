@@ -78,6 +78,21 @@ class EftIteratorTest < Test::Unit::TestCase
     assert_trace(%w[ alice/0_1_0 bob/0_1_0 charly/0_1_0 ], pdef)
   end
 
+  def test_on_nested_f
+
+    pdef = Ruote.process_definition :name => 'test' do
+      set 'f:data' => {}
+      set 'f:data.people' => %w[ alice bob charly ]
+      iterator :on_f => 'data.people', :to_var => 'v' do
+        participant '${v:v}'
+      end
+    end
+
+    @engine.register_participant '.*', TraceParticipant
+
+    assert_trace(%w[ alice/0_2_0 bob/0_2_0 charly/0_2_0 ], pdef)
+  end
+
   def test_to_f
 
     pdef = Ruote.process_definition :name => 'test' do
@@ -93,6 +108,28 @@ class EftIteratorTest < Test::Unit::TestCase
     #noisy
 
     assert_trace(%w[ alice/0_0_0 bob/0_0_0 charly/0_0_0 ], pdef)
+  end
+
+  def test_to
+
+    pdef = Ruote.process_definition :name => 'test' do
+      iterator :on_val => 'a, b', :to => 'x' do
+        echo '${f:x}'
+      end
+      iterator :on_val => 'c, d', :to => 'f:y' do
+        echo '${f:y}'
+      end
+      iterator :on_val => 'e, f', :to => 'v:z' do
+        echo '${v:z}'
+      end
+    end
+
+    #@engine.noisy = true
+
+    wfid = @engine.launch(pdef)
+    @engine.wait_for(wfid)
+
+    assert_equal %w[ a b c d e f ], @tracer.to_a
   end
 
   PDEF0 = Ruote.process_definition :name => 'test' do

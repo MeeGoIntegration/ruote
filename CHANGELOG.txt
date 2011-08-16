@@ -4,6 +4,11 @@
 
 == ruote - 2.2.1    not yet released
 
+- Reader.read(s) : better error raised when failed to 'parse'
+- :on_field => 'my.nested.field' now possible
+- [concurrent-]iterator :to => 'v:x' / 'f:y' / 'y'
+- concurrence :merge_type => 'union'
+- Reader.to_radial(tree)
 - Workitem#param_or_field(key) and #field_or_param(key)
 - Workitem#param_text
 - ProcessError#deviations (cf filter and Ruote::ValidationError)
