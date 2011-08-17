@@ -27,20 +27,22 @@ License:        GPLv2+ or Ruby
 BuildRoot:      %{_tmppath}/%{name}-%{version}-build
 BuildRequires:  rubygems_with_buildroot_patch
 %rubygems_requires
+BuildRequires:  rubygem-parslet >= 1.2.0
+Requires:       rubygem-parslet >= 1.2.0
 BuildRequires:  rubygem-sourcify >= 0.4.2
 Requires:       rubygem-sourcify >= 0.4.2
-BuildRequires:  rubygem-rufus-json >= 0.2.2
-Requires:       rubygem-rufus-json >= 0.2.2
+BuildRequires:  rubygem-rufus-json >= 0.2.5
+Requires:       rubygem-rufus-json >= 0.2.5
 BuildRequires:  rubygem-rufus-cloche >= 0.1.21
 Requires:       rubygem-rufus-cloche >= 0.1.21
-BuildRequires:  rubygem-rufus-dollar 
-Requires:       rubygem-rufus-dollar 
+BuildRequires:  rubygem-rufus-dollar >= 1.0.4
+Requires:       rubygem-rufus-dollar >= 1.0.4
 BuildRequires:  rubygem-rufus-mnemo >= 1.1.0
 Requires:       rubygem-rufus-mnemo >= 1.1.0
-BuildRequires:  rubygem-rufus-scheduler >= 2.0.5
-Requires:       rubygem-rufus-scheduler >= 2.0.5
-BuildRequires:  rubygem-rufus-treechecker >= 1.0.3
-Requires:       rubygem-rufus-treechecker >= 1.0.3
+BuildRequires:  rubygem-rufus-scheduler >= 2.0.9
+Requires:       rubygem-rufus-scheduler >= 2.0.9
+BuildRequires:  rubygem-rufus-treechecker >= 1.0.6
+Requires:       rubygem-rufus-treechecker >= 1.0.6
 #
 Url:            http://ruote.rubyforge.org
 Source:         %{mod_name}-%{version}.gem
