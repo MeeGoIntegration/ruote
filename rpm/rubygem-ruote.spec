@@ -17,7 +17,7 @@
 
 # norootforbuild
 Name:           rubygem-ruote
-Version:        2.2.0nearly1
+Version:        2.2.0.1
 Release:        0
 %define mod_name ruote
 #

@@ -24,6 +24,6 @@
 
 module Ruote
 
-  VERSION = '2.2.0nearly1'
+  VERSION = '2.2.0.1'
 end
 
