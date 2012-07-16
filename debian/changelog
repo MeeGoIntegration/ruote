@@ -1,3 +1,9 @@
+ruby-ruote (2.3.0-1) unstable; urgency=low
+
+  * Update to 2.3.0-ish (git sha1 e59968)
+
+ -- David Greaves <david@dgreaves.com>  Mon, 16 Jul 2012 23:13:48 +0100
+
 ruby-ruote (2.2.0.1-4) unstable; urgency=low
 
   * Backport the ErrorHandler#action_handle: setting 'put_at' fix to
