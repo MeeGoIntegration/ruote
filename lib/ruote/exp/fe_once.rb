@@ -1,5 +1,5 @@
 #--
-# Copyright (c) 2005-2011, John Mettraux, jmettraux@gmail.com
+# Copyright (c) 2005-2012, John Mettraux, jmettraux@gmail.com
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -149,7 +149,6 @@ module Ruote::Exp
 
       h.frequency = attribute(:frequency) || attribute(:freq) || '10s'
       h.triggered = false
-      h.job_id = nil
 
       reply(h.applied_workitem)
     end
@@ -164,37 +163,29 @@ module Ruote::Exp
 
         h.triggered = true
 
-        @context.storage.delete_schedule(h.job_id)
+        @context.storage.delete_schedule(h.schedule_id)
           # especially for a cron...
 
-        if tree_children[0]
-          #
-          # trigger first child
-          #
+        if tree_children[0] # trigger first child
+
           apply_child(0, workitem)
-        else
-          #
-          # blocking case
-          #
+
+        else # blocking case
+
           reply_to_parent(workitem)
         end
+
       else
 
         reschedule
       end
     end
 
-    def cancel(flavour)
-
-      @context.storage.delete_schedule(h.job_id)
-      super
-    end
-
     protected
 
     def reschedule
 
-      h.job_id = @context.storage.put_schedule(
+      h.schedule_id = @context.storage.put_schedule(
         'cron',
         h.fei,
         h.frequency,
@@ -202,7 +193,7 @@ module Ruote::Exp
         'fei' => h.fei,
         'workitem' => h.applied_workitem)
 
-      @context.storage.delete_schedule(h.job_id) if try_persist
+      @context.storage.delete_schedule(h.schedule_id) if try_persist
         #
         # if the persist failed, immediately unschedule
         # the just scheduled job

@@ -1,5 +1,5 @@
 #--
-# Copyright (c) 2005-2011, John Mettraux, jmettraux@gmail.com
+# Copyright (c) 2005-2012, John Mettraux, jmettraux@gmail.com
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -60,7 +60,7 @@ module Ruote::Exp
       elsif escape
         v
       else
-        @context.dollar_sub.s(v, self, workitem)
+        dsub(v, workitem)
       end
 
       v = v.to_s if v and string
@@ -72,19 +72,11 @@ module Ruote::Exp
     # in the array list 'values'. If not, the default value is returned.
     # By default, the default value is the first element of 'values'.
     #
-    def att(key, values, opts={})
+    def att(keys, values, opts={})
 
       default = opts[:default] || values.first
 
-      val = attribute(key)
-      val = val.to_s if val
-
-      #raise(
-      #  ArgumentError.new("attribute '#{key}' missing in #{tree}")
-      #) if opts[:mandatory] && val == nil
-      #raise(
-      #  ArgumentError.new("attribute '#{key}' has invalid value in #{tree}")
-      #) if opts[:enforce] && (not values.include?(val))
+      val = Array(keys).collect { |key| attribute(key) }.compact.first.to_s
 
       values.include?(val) ? val : default
     end
@@ -115,24 +107,8 @@ module Ruote::Exp
     #
     def compile_atts(opts={})
 
-      attributes.keys.inject({}) { |r, k|
-        r[k] = attribute(k, h.applied_workitem, opts)
-        r
-      }
-    end
-
-    # Like compile_atts, but the keys are expanded as well.
-    #
-    # Useful for things like
-    #
-    #   set "f:${v:field_name}" => "${v:that_variable}"
-    #
-    def expand_atts(opts={})
-
-      attributes.keys.inject({}) { |r, k|
-        kk = @context.dollar_sub.s(k, self, h.applied_workitem)
-        r[kk] = attribute(k, h.applied_workitem, opts)
-        r
+      attributes.keys.each_with_object({}) { |k, r|
+        r[dsub(k)] = attribute(k, h.applied_workitem, opts)
       }
     end
 
@@ -154,11 +130,35 @@ module Ruote::Exp
 
       text = attributes.keys.find { |k| attributes[k] == nil }
 
-      @context.dollar_sub.s(text.to_s, self, workitem)
+      dsub(text.to_s, workitem)
+    end
+
+    # Equivalent to #attribute_text, but will return nil if there
+    # is no attribute whose values is nil.
+    #
+    def att_text(workitem=h.applied_workitem)
+
+      text = attributes.keys.find { |k| attributes[k] == nil }
+
+      text ? dsub(text.to_s, workitem) : nil
     end
 
     protected
 
+    # dollar substitution for expressions.
+    #
+    def dsub(o, wi=h.applied_workitem)
+
+      case o
+        when String; @context.dollar_sub.s(o, self, wi)
+        when Array; o.collect { |e| dsub(e, wi) }
+        when Hash; o.remap { |(k, v), h| h[dsub(k, wi)] = dsub(v, wi) }
+        else o
+      end
+    end
+
+    # 'tos' meaning 'many "to"'
+    #
     def determine_tos
 
       to_v = attribute(:to_v) || attribute(:to_var) || attribute(:to_variable)

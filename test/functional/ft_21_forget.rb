@@ -5,7 +5,7 @@
 # Mon Jul 27 09:17:51 JST 2009
 #
 
-require File.join(File.dirname(__FILE__), 'base')
+require File.expand_path('../base', __FILE__)
 
 require 'ruote/participant'
 
@@ -22,13 +22,13 @@ class FtForgetTest < Test::Unit::TestCase
       end
     end
 
-    @engine.register_participant :alpha do
-      @tracer << "alpha\n"
+    @dashboard.register_participant :alpha do
+      tracer << "alpha\n"
     end
 
     #noisy
 
-    wfid = @engine.launch(pdef)
+    wfid = @dashboard.launch(pdef)
 
     wait_for(wfid)
     wait_for(wfid)
@@ -43,7 +43,7 @@ class FtForgetTest < Test::Unit::TestCase
 
   def test_forgotten_tree
 
-    sp = @engine.register_participant :alpha, Ruote::StorageParticipant
+    sp = @dashboard.register_participant :alpha, Ruote::StorageParticipant
 
     pdef = Ruote.process_definition do
       sequence do
@@ -51,11 +51,11 @@ class FtForgetTest < Test::Unit::TestCase
       end
     end
 
-    wfid = @engine.launch(pdef)
+    wfid = @dashboard.launch(pdef)
 
     wait_for(wfid)
 
-    ps = @engine.process(wfid)
+    ps = @dashboard.process(wfid)
 
     assert_not_nil ps
     assert_equal 0, ps.errors.size
@@ -63,10 +63,6 @@ class FtForgetTest < Test::Unit::TestCase
 
     fei = ps.expressions.first.fei
     assert_equal fei, ps.root_expression_for(fei).fei
-
-    #puts "not sure..."
-    #p ps.original_tree
-    #p ps.current_tree
   end
 
   def test_forget_true_string
@@ -79,16 +75,15 @@ class FtForgetTest < Test::Unit::TestCase
       charly
     end
 
-    @engine.register_participant '.+' do |wi|
-      @tracer << wi.participant_name + "\n"
+    @dashboard.register_participant '.+' do |wi|
+      tracer << wi.participant_name + "\n"
     end
 
-    wfid = @engine.launch(pdef)
+    wfid = @dashboard.launch(pdef)
 
     wait_for(wfid)
     wait_for(wfid)
 
-    #assert_equal "alpha\nbravo\ncharly", @tracer.to_s
     assert_equal %w[ alpha bravo charly ], @tracer.to_a.sort
   end
 
@@ -102,20 +97,20 @@ class FtForgetTest < Test::Unit::TestCase
       end
     end
 
-    @engine.register_participant 'alpha', Ruote::NullParticipant
+    @dashboard.register_participant 'alpha', Ruote::NullParticipant
       # this participant never replies
 
-    @engine.register_participant 'bravo', Ruote::NoOpParticipant
+    @dashboard.register_participant 'bravo', Ruote::NoOpParticipant
       # this one simply replies
 
-    #@engine.noisy = true
+    #@dashboard.noisy = true
 
-    wfid = @engine.launch(pdef)
+    wfid = @dashboard.launch(pdef)
 
-    @engine.wait_for(:bravo)
-    @engine.wait_for(:bravo)
+    @dashboard.wait_for(:bravo)
+    @dashboard.wait_for(:bravo)
 
-    assert_not_nil @engine.process(wfid)
+    assert_not_nil @dashboard.process(wfid)
   end
 
   # As reported by Nando Sola
@@ -135,19 +130,19 @@ class FtForgetTest < Test::Unit::TestCase
       end
     end
 
-    @engine.register do
+    @dashboard.register do
       catchall Ruote::NoOpParticipant
     end
 
     #noisy
 
-    wfid = @engine.launch(pdef)
+    wfid = @dashboard.launch(pdef)
 
-    @engine.wait_for(wfid)
+    @dashboard.wait_for(wfid)
 
     assert_equal(
       [],
-      @engine.history.all.select { |e| e['action'] == 'error_intercepted' })
+      @dashboard.history.all.select { |e| e['action'] == 'error_intercepted' })
   end
 end
 

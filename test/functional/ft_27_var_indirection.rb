@@ -5,7 +5,7 @@
 # Sun Aug 23 16:59:07 JST 2009
 #
 
-require File.join(File.dirname(__FILE__), 'base')
+require File.expand_path('../base', __FILE__)
 
 
 class FtVarIndirectionTest < Test::Unit::TestCase
@@ -21,8 +21,8 @@ class FtVarIndirectionTest < Test::Unit::TestCase
       end
     end
 
-    alpha = @engine.register_participant :bravo do |workitem|
-      @tracer << "b:#{workitem.fields['params']['original_ref']}\n"
+    alpha = @dashboard.register_participant :bravo do |workitem|
+      tracer << "b:#{workitem.fields['params']['original_ref']}\n"
     end
 
     #noisy
@@ -40,8 +40,8 @@ class FtVarIndirectionTest < Test::Unit::TestCase
       end
     end
 
-    @engine.register_participant :alpha do |workitem|
-      @tracer << "alpha\n"
+    @dashboard.register_participant :alpha do |workitem|
+      tracer << "alpha\n"
     end
 
     #noisy
@@ -90,7 +90,7 @@ class FtVarIndirectionTest < Test::Unit::TestCase
 
     #noisy
 
-    @engine.variables['v'] = File.join(File.dirname(__FILE__), '..', 'pdef.xml')
+    @dashboard.variables['v'] = File.join(File.dirname(__FILE__), '..', 'pdef.xml')
 
     assert_trace %w[ a b ], pdef
   end
@@ -103,10 +103,26 @@ class FtVarIndirectionTest < Test::Unit::TestCase
 
     #noisy
 
-    @engine.variables['v'] = File.expand_path(
+    @dashboard.variables['v'] = File.expand_path(
       File.join(File.dirname(__FILE__), '..', 'pdef.xml'))
 
     assert_trace %w[ a b ], pdef
+  end
+
+  def test_engine_variable_for_expression_aliases
+
+    pdef = Ruote.define do
+      output "nada"
+    end
+
+    @dashboard.variables['output'] = 'echo'
+
+    #@dashboard.noisy = true
+
+    wfid = @dashboard.launch(pdef)
+    @dashboard.wait_for(wfid)
+
+    assert_equal 'nada', @tracer.to_s
   end
 end
 

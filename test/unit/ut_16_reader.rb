@@ -5,7 +5,7 @@
 # Tue Oct 20 10:48:11 JST 2009
 #
 
-require File.join(File.dirname(__FILE__), '..', 'test_helper.rb')
+require File.expand_path('../../test_helper', __FILE__)
 
 require_json
 require 'ruote/reader'
@@ -24,10 +24,11 @@ class PdefReaderTest < Test::Unit::TestCase
 
   TREE1 = Ruote::Reader.read(%{
     Ruote.define :name => 'nada' do
-      sequence do
-        alpha
-        participant 'bravo', :timeout => '2d', :on_board => true
-      end
+      alpha
+      participant 'bravo', :timeout => '2d', :on_board => true
+      participant 'charly', :on_board => false, :whatever => nil
+      doug :a => 'false', :b => 'true', :c => 'nil', :d => 4.5
+      dec 'v:x'
     end
   })
 
@@ -65,10 +66,11 @@ class PdefReaderTest < Test::Unit::TestCase
       %{
 <?xml version="1.0" encoding="UTF-8"?>
 <define name="nada">
-  <sequence>
-    <alpha/>
-    <participant timeout="2d" on-board="true" ref="bravo"/>
-  </sequence>
+  <alpha/>
+  <participant on-board="true" ref="bravo" timeout="2d"/>
+  <participant on-board="false" ref="charly" whatever="nil"/>
+  <doug a="false" b="true" c="nil" d="4.5"/>
+  <dec ref="v:x"/>
 </define>
       }.strip,
       Ruote::Reader.to_xml(TREE1, :indent => 2).strip)
@@ -99,10 +101,11 @@ class PdefReaderTest < Test::Unit::TestCase
     assert_equal(
       %{
 Ruote.process_definition :name => "nada" do
-  sequence do
-    alpha
-    participant "bravo", :timeout => "2d", :on_board => true
-  end
+  alpha
+  participant "bravo", :on_board => true, :timeout => "2d"
+  participant "charly", :on_board => false, :whatever => nil
+  doug :a => "false", :b => "true", :c => "nil", :d => 4.5
+  dec "v:x"
 end
       }.strip,
       Ruote::Reader.to_ruby(TREE1).strip)
@@ -119,12 +122,45 @@ end
 
     assert_equal(
       %{
-define name: "nada"
-  sequence
-    alpha
-    participant "bravo", timeout: "2d", on_board: true
+define name: nada
+  alpha
+  participant bravo, on_board: true, timeout: 2d
+  participant charly, on_board: false, whatever: nil
+  doug a: "false", b: "true", c: "nil", d: 4.5
+  dec "v:x"
       }.strip,
       Ruote::Reader.to_radial(TREE1).strip)
+  end
+
+  def test_to_radial_back_and_forth
+
+    rad = Ruote::Reader.to_radial(TREE1)
+
+    assert_equal TREE1, Ruote::Reader.read(rad)
+  end
+
+  def test_to_radial_2
+
+    tree = Ruote.define do
+      participant 'bob', 'message' => "hello my\ndear world"
+      participant 'charly', 'message' => 'oh my'
+    end
+
+    rad = Ruote::Reader.to_radial(tree)
+
+    assert_equal tree, Ruote::Reader.read(rad)
+  end
+
+  def test_to_expid_radial
+
+    assert_equal(
+      %{  0  define name: nada
+0_0    alpha
+0_1    participant bravo, on_board: true, timeout: 2d
+0_2    participant charly, on_board: false, whatever: nil
+0_3    doug a: "false", b: "true", c: "nil", d: 4.5
+0_4    dec "v:x"},
+      Ruote::Reader.to_expid_radial(TREE1))
   end
 
   DEF1 = %{
@@ -212,14 +248,36 @@ end
 
     begin
       Ruote::Reader.read(%{
-        process_definition ${f:y}
+        process_definition [f:y]
           alpha
       })
     rescue => err
     end
 
     assert_equal Ruote::Reader::Error, err.class
-    assert_equal Parslet::ParseFailed, err.cause.class
+    assert_equal Parslet::UnconsumedInput, err.cause.class
+  end
+
+  def test_ruby_attributes
+
+    pdef = Ruote.define do
+      sequence :on_error => [
+        { /unknown participant/ => 'alpha' },
+        { nil => 'bravo' }
+      ] do
+        nada
+      end
+    end
+
+    assert_equal(
+      [ 'define', {}, [
+        [ 'sequence', { 'on_error' => [
+          { '/unknown participant/' => 'alpha' }, { nil => 'bravo' }
+          ] }, [
+          [ 'nada', {}, [] ]
+        ] ]
+      ] ],
+      pdef)
   end
 end
 

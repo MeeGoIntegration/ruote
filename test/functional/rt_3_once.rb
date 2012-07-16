@@ -5,8 +5,8 @@
 # Tue Oct 27 01:36:52 JST 2009
 #
 
-require File.join(File.dirname(__FILE__), 'base')
-require File.join(File.dirname(__FILE__), 'restart_base')
+require File.expand_path('../base', __FILE__)
+require File.expand_path('../restart_base', __FILE__)
 
 
 class RtWhenTest < Test::Unit::TestCase
@@ -37,34 +37,39 @@ class RtWhenTest < Test::Unit::TestCase
       end
     end
 
-    #noisy
+    #@dashboard.noisy = true
 
-    wfid = @engine.launch(pdef)
+    wfid = @dashboard.launch(pdef)
 
     wait_for(5)
 
-    assert_equal 1, @engine.processes.size
-    assert_equal 1, @engine.storage.get_many('schedules').size
+    sleep 0.300
+      # give it some time to register the schedule
 
-    @engine.shutdown
+    assert_equal 1, @dashboard.processes.size
+    assert_equal 1, @dashboard.storage.get_many('schedules').size
+
+    @dashboard.shutdown
 
     # restart...
 
     start_new_engine
 
+    sleep 0.500
+
     #noisy
 
-    assert_equal 1, @engine.processes.size
-    assert_equal 1, @engine.storage.get_many('schedules').size
+    assert_equal 1, @dashboard.processes.size
+    assert_equal 1, @dashboard.storage.get_many('schedules').size
 
-    @engine.variables['resume'] = true
+    @dashboard.variables['resume'] = true
 
     wait_for(wfid)
 
     assert_equal "in\nout.", @tracer.to_s
 
-    assert_equal 0, @engine.processes.size
-    assert_equal 0, @engine.storage.get_many('schedules').size
+    assert_equal 0, @dashboard.processes.size
+    assert_equal 0, @dashboard.storage.get_many('schedules').size
   end
 end
 

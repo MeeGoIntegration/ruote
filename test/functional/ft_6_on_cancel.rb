@@ -5,7 +5,7 @@
 # Wed Jun  3 21:52:09 JST 2009
 #
 
-require File.join(File.dirname(__FILE__), 'base')
+require File.expand_path('../base', __FILE__)
 
 require 'ruote/participant'
 
@@ -21,18 +21,18 @@ class FtOnCancelTest < Test::Unit::TestCase
       end
     end
 
-    nemo = @engine.register_participant :nemo, Ruote::StorageParticipant
+    nemo = @dashboard.register_participant :nemo, Ruote::StorageParticipant
 
-    @engine.register_participant :catcher do
-      @tracer << "caught\n"
+    @dashboard.register_participant :catcher do
+      tracer << "caught\n"
     end
 
     #noisy
 
-    wfid = @engine.launch(pdef)
+    wfid = @dashboard.launch(pdef)
     wait_for(:nemo)
 
-    @engine.cancel_process(wfid)
+    @dashboard.cancel_process(wfid)
     wait_for(wfid)
 
     assert_equal 'caught', @tracer.to_s
@@ -46,17 +46,17 @@ class FtOnCancelTest < Test::Unit::TestCase
       end
     end
 
-    nemo = @engine.register_participant :nemo, Ruote::StorageParticipant
+    nemo = @dashboard.register_participant :nemo, Ruote::StorageParticipant
 
     #noisy
 
-    wfid = @engine.launch(pdef)
+    wfid = @dashboard.launch(pdef)
     wait_for(:nemo)
 
-    @engine.cancel_process(wfid)
+    @dashboard.cancel_process(wfid)
     wait_for(wfid)
 
-    ps = @engine.process(wfid)
+    ps = @dashboard.process(wfid)
     assert_not_nil ps
 
     #logger.log.each { |e| puts e['action'] }
@@ -78,21 +78,21 @@ class FtOnCancelTest < Test::Unit::TestCase
       end
     end
 
-    alpha = @engine.register_participant :alpha, Ruote::StorageParticipant
+    alpha = @dashboard.register_participant :alpha, Ruote::StorageParticipant
 
     #noisy
 
-    wfid = @engine.launch(pdef)
+    wfid = @dashboard.launch(pdef)
 
     wait_for(:alpha)
 
     assert_equal '', @tracer.to_s
 
-    @engine.cancel_process(wfid)
+    @dashboard.cancel_process(wfid)
 
     wait_for(wfid)
 
-    assert_nil @engine.process(wfid)
+    assert_nil @dashboard.process(wfid)
 
     assert_equal "d0\nd1", @tracer.to_s
   end
@@ -108,20 +108,20 @@ class FtOnCancelTest < Test::Unit::TestCase
       end
     end
 
-    @engine.register_participant :alpha, Ruote::StorageParticipant
-    sto = @engine.register_participant :bravo, Ruote::StorageParticipant
+    @dashboard.register_participant :alpha, Ruote::StorageParticipant
+    sto = @dashboard.register_participant :bravo, Ruote::StorageParticipant
 
     #noisy
 
-    wfid = @engine.launch(pdef)
+    wfid = @dashboard.launch(pdef)
 
     wait_for(:alpha)
 
-    fei = @engine.process(wfid).expressions.find { |e|
+    fei = @dashboard.process(wfid).expressions.find { |e|
       e.fei.expid == '0_1'
     }.fei
 
-    @engine.cancel_expression(fei)
+    @dashboard.cancel_expression(fei)
 
     wait_for(:bravo)
 
@@ -139,16 +139,16 @@ class FtOnCancelTest < Test::Unit::TestCase
       end
     end
 
-    @engine.register_participant :alpha, Ruote::StorageParticipant
-    @engine.register_participant :bravo, Ruote::StorageParticipant
+    @dashboard.register_participant :alpha, Ruote::StorageParticipant
+    @dashboard.register_participant :bravo, Ruote::StorageParticipant
 
     #noisy
 
-    wfid = @engine.launch(pdef)
+    wfid = @dashboard.launch(pdef)
 
     wait_for(:alpha)
 
-    @engine.cancel_process(wfid)
+    @dashboard.cancel_process(wfid)
 
     wait_for(:bravo)
 
@@ -156,12 +156,39 @@ class FtOnCancelTest < Test::Unit::TestCase
       ["define", {"name"=>"test"}, [
         ["define", {"sub0"=>nil}, [["bravo", {}, []]]],
         ["sequence", {"on_cancel"=>"sub0"}, [["alpha", {}, []]]]]],
-      @engine.process(wfid).original_tree)
+      @dashboard.process(wfid).original_tree)
     assert_equal(
       ["define", {"name"=>"test"}, [
         ["define", {"sub0"=>nil}, [["participant", {"ref"=>"bravo"}, []]]],
         ["sequence", {"on_cancel"=>"sub0", "_triggered"=>"on_cancel"}, [["alpha", {}, []]]]]],
-      @engine.process(wfid).current_tree)
+      @dashboard.process(wfid).current_tree)
+  end
+
+  def test_on_cancel_tree
+
+    pdef = Ruote.process_definition :name => 'test' do
+      set 'bar' => 'baz'
+      sequence :on_cancel => [ 'sub0', { 'foo' => '${bar}' }, [] ] do
+        alpha
+      end
+      define 'sub0' do
+        echo 'foo:${v:foo}'
+      end
+    end
+
+    @dashboard.register_participant :alpha, Ruote::StorageParticipant
+
+    #@dashboard.noisy = true
+
+    wfid = @dashboard.launch(pdef)
+
+    wait_for(:alpha)
+
+    @dashboard.cancel_process(wfid)
+
+    wait_for(wfid)
+
+    assert_equal 'foo:baz', @tracer.to_s
   end
 
   def test_on_cancel_participant_resume
@@ -176,17 +203,17 @@ class FtOnCancelTest < Test::Unit::TestCase
       end
     end
 
-    @engine.register :alpha, Ruote::StorageParticipant
+    @dashboard.register :alpha, Ruote::StorageParticipant
 
     #noisy
 
-    wfid = @engine.launch(pdef)
+    wfid = @dashboard.launch(pdef)
 
-    @engine.wait_for(:alpha)
+    @dashboard.wait_for(:alpha)
 
-    @engine.cancel(@engine.storage_participant.first)
+    @dashboard.cancel(@dashboard.storage_participant.first)
 
-    @engine.wait_for(wfid)
+    @dashboard.wait_for(wfid)
 
     assert_equal "bailed\ndone.", @tracer.to_s
   end
@@ -204,17 +231,143 @@ class FtOnCancelTest < Test::Unit::TestCase
       end
     end
 
-    #noisy
+    wfid = @dashboard.launch(pdef)
 
-    wfid = @engine.launch(pdef)
+    @dashboard.wait_for(6)
 
-    @engine.wait_for(6)
+    @dashboard.cancel(@dashboard.process(wfid).expressions.last)
 
-    @engine.cancel(@engine.process(wfid).expressions.last)
-
-    @engine.wait_for(wfid)
+    @dashboard.wait_for('terminated')
 
     assert_equal "bailed\ndone.", @tracer.to_s
+  end
+
+  def test_on_cancel_is_not_triggered_by_on_error_undo
+
+    pdef = Ruote.define do
+      sequence :on_cancel => 'c', :on_error => 'undo' do
+        echo 'n'
+        error 'nada'
+      end
+      define 'c' do
+        echo 'c'
+      end
+    end
+
+    wfid = @dashboard.launch(pdef)
+    r = @dashboard.wait_for(wfid)
+
+    assert_equal 'terminated', r['action']
+    assert_equal %w[ n ], @tracer.to_a
+  end
+
+  def test_on_cancel_is_triggered_by_on_error_cancel
+
+    pdef = Ruote.define do
+      sequence :on_cancel => 'c', :on_error => 'cancel' do
+        echo 'n'
+        error 'nada'
+      end
+      define 'c' do
+        echo 'c'
+      end
+    end
+
+    wfid = @dashboard.launch(pdef)
+    r = @dashboard.wait_for(wfid)
+
+    assert_equal 'terminated', r['action']
+    assert_equal %w[ n c ], @tracer.to_a
+  end
+
+  #
+  # 'cando'
+
+  class MyBrokenParticipant
+    include Ruote::LocalParticipant
+    def self.reset
+      @@seen = 0
+    end
+    def on_workitem
+      if @@seen > 1
+        reply
+      else
+        @@seen += 1
+        fail 'broke'
+      end
+    end
+    def on_cancel
+    end
+  end
+
+  def test_on_cancel_is_triggered_by_on_error_cando
+
+    MyBrokenParticipant.reset
+
+    @dashboard.register :broken, MyBrokenParticipant
+
+    pdef = Ruote.define do
+      define 'c' do; echo 'c'; end
+      sequence :on_cancel => 'c', :on_error => 'cando' do
+        echo 'n'
+        broken
+      end
+      echo 'z'
+    end
+
+    wfid = @dashboard.launch(pdef)
+    r = @dashboard.wait_for(wfid)
+
+    assert_equal 'terminated', r['action']
+    assert_equal %w[ n c n c n z ], @tracer.to_a
+  end
+
+  def test_on_error_cando_when_no_on_cancel
+
+    MyBrokenParticipant.reset
+
+    @dashboard.register :broken, MyBrokenParticipant
+
+    pdef = Ruote.define do
+      sequence :on_error => 'cando' do
+        echo 'n'
+        broken
+      end
+      echo 'z'
+    end
+
+    wfid = @dashboard.launch(pdef)
+    r = @dashboard.wait_for(wfid)
+
+    assert_equal 'terminated', r['action']
+    assert_equal %w[ n n n z ], @tracer.to_a
+  end
+
+  #
+  # the "second take" feature
+
+  def test_second_take
+
+    @dashboard.register_participant :alpha, Ruote::StorageParticipant
+
+    pdef = Ruote.define do
+      define 'sub0' do
+        set '__on_cancel__' => 'redo'
+      end
+      sequence :on_cancel => 'sub0' do
+        alpha
+      end
+    end
+
+    wfid = @dashboard.launch(pdef)
+    r = @dashboard.wait_for('dispatched')
+
+    exp = @dashboard.ps(wfid).expressions[1]
+    @dashboard.cancel(exp)
+
+    r = @dashboard.wait_for('dispatched')
+
+    assert_equal 'alpha', r['participant_name']
   end
 end
 

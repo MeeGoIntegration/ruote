@@ -1,5 +1,5 @@
 #--
-# Copyright (c) 2005-2011, John Mettraux, jmettraux@gmail.com
+# Copyright (c) 2005-2012, John Mettraux, jmettraux@gmail.com
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -41,8 +41,11 @@ module Ruote
   #
   #   process_history = engine.history.by_wfid(wfid0)
   #
-  # Note that, by default, the history is an in-memory history (and it is
-  # useless when there are multiple workers).
+  #
+  # == final note
+  #
+  # By default, the history is an in-memory history (see Ruote::DefaultHistory)
+  # (and it is worthless when there are multiple workers).
   #
   class StorageHistory
 
@@ -53,13 +56,7 @@ module Ruote
       @context = context
       @options = options
 
-      if @context.worker
-
-        # only care about logging if there is a worker present
-
-        @context.storage.add_type('history')
-        @context.worker.subscribe(:all, self)
-      end
+      @context.storage.add_type('history')
     end
 
     # Returns all the wfids for which there are history items (msgs) stored.
@@ -126,10 +123,12 @@ module Ruote
       @context.storage.purge_type!('history')
     end
 
-    # This is the method called by the workqueue. Incoming engine events
-    # are 'processed' here.
+    # This method is called by the worker via the context. Successfully
+    # processed msgs are passed here.
     #
-    def notify(msg)
+    def on_msg(msg)
+
+      return unless accept?(msg)
 
       msg = msg.dup
         # a shallow copy is sufficient
@@ -150,6 +149,17 @@ module Ruote
       msg.delete('_rev')
 
       @context.storage.put(msg)
+    end
+
+    protected
+
+    # This default implementation lets all the messages in.
+    #
+    # Feel free to override this method in a subclass.
+    #
+    def accept?(msg)
+
+      true
     end
   end
 end

@@ -5,8 +5,8 @@
 # Thu Jul  2 12:51:54 JST 2009
 #
 
-require File.join(File.dirname(__FILE__), 'base')
-require File.join(File.dirname(__FILE__), 'restart_base')
+require File.expand_path('../base', __FILE__)
+require File.expand_path('../restart_base', __FILE__)
 
 
 require 'ruote/participant'
@@ -32,21 +32,21 @@ class RtListenTest < Test::Unit::TestCase
 
     #puts; noisy
 
-    alpha = @engine.register_participant :alpha, Ruote::StorageParticipant
+    alpha = @dashboard.register_participant :alpha, Ruote::StorageParticipant
 
-    wfid = @engine.launch(pdef)
+    wfid = @dashboard.launch(pdef)
 
     wait_for(:alpha)
 
     assert_equal '', @tracer.to_s
 
-    @engine.shutdown
+    @dashboard.shutdown
 
     start_new_engine
 
     #puts; noisy
 
-    @engine.reply(alpha.first)
+    @dashboard.reply(alpha.first)
 
     wait_for(wfid)
 

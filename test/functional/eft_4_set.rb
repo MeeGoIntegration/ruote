@@ -5,7 +5,7 @@
 # Wed May 20 09:23:01 JST 2009
 #
 
-require File.join(File.dirname(__FILE__), 'base')
+require File.expand_path('../base', __FILE__)
 
 
 class EftSetTest < Test::Unit::TestCase
@@ -129,10 +129,10 @@ class EftSetTest < Test::Unit::TestCase
       alpha
     end
 
-    @engine.register_participant :alpha do |workitem|
+    @dashboard.register_participant :alpha do |workitem|
       workitem.fields.delete('params')
       workitem.fields.delete('dispatched_at')
-      @tracer << workitem.fields.inspect
+      tracer << workitem.fields.inspect
     end
 
     assert_trace '{"f"=>nil}', pdef
@@ -164,9 +164,8 @@ class EftSetTest < Test::Unit::TestCase
       end
     end
 
-    @engine.register_participant :alpha do |workitem|
-      @tracer << workitem.fields['f']
-      @tracer << "\n"
+    @dashboard.register_participant :alpha do |workitem|
+      tracer << workitem.fields['f'] + "\n"
     end
 
     #noisy
@@ -219,12 +218,12 @@ class EftSetTest < Test::Unit::TestCase
 
     #noisy
 
-    wfid = @engine.launch(pdef)
+    wfid = @dashboard.launch(pdef)
 
     wait_for(wfid)
 
-    assert_nil @engine.process(wfid)
-    assert_nil @engine.variables['v']
+    assert_nil @dashboard.process(wfid)
+    assert_nil @dashboard.variables['v']
   end
 
   # 'rset' is an alias for 'set'.
@@ -233,13 +232,113 @@ class EftSetTest < Test::Unit::TestCase
   #
   def test_rset
 
-    wfid = @engine.launch(Ruote.define do
+    wfid = @dashboard.launch(Ruote.define do
       rset 'developer' => 'Rebo'
     end)
 
-    r = @engine.wait_for(wfid)
+    r = @dashboard.wait_for(wfid)
 
     assert_equal 'Rebo', r['workitem']['fields']['developer']
+  end
+
+  def test_unset_field
+
+    pdef = Ruote.define do
+
+      set 'f:alpha' => 'alice'
+      set 'f:bravo' => 'bob'
+      set 'f:charly' => 'charles'
+      set 'f:__timed_out__' => %w[ seriously ]
+      set 'f:delta' => { 'echo' => 'e', 'foxtrott' => 'f' }
+
+      unset 'f:alpha'
+      unset :f => 'bravo'
+      unset :field => 'charly'
+      unset :field => '__timed_out__'
+      unset 'f:delta.echo'
+    end
+
+    wfid = @dashboard.launch(pdef)
+
+    r = @dashboard.wait_for(wfid)
+
+    assert_equal(
+      { '__result__' => 'e', 'delta' => { 'foxtrott' => 'f' } },
+      r['workitem']['fields'])
+  end
+
+  class VarPeek
+    include Ruote::LocalParticipant
+    def consume
+      context.tracer << fexp.compile_variables.inspect
+      reply
+    end
+  end
+
+  def test_unset_var
+
+    pdef = Ruote.define do
+      set 'v:v0' => 'nada'
+      set 'v:v1' => 'nada'
+      unset 'v:v0'
+      unset :v => 'v1'
+      peek
+    end
+
+    @dashboard.register :peek, VarPeek
+
+    #@dashboard.noisy = true
+
+    wfid = @dashboard.launch(pdef)
+
+    r = @dashboard.wait_for(wfid)
+
+    assert_equal '{}', @tracer.to_s
+  end
+
+  def test_set_sets_return_field
+
+    pdef = Ruote.define do
+      set 'v:v0' => 'nada'
+    end
+
+    wfid = @dashboard.launch(pdef)
+    r = @dashboard.wait_for(wfid)
+
+    assert_equal 'nada', r['workitem']['fields']['__result__']
+  end
+
+  def test_set_picks_latest
+
+    pdef = Ruote.define do
+      set 'f0' do
+        set 'v:v0' => '1'
+        set 'v:v1' => '2'
+        set 'f1' => '${v:v0}${v:v1}'
+      end
+      echo '${f0}/${v:v0}'
+    end
+
+    #@dashboard.noisy = true
+
+    wfid = @dashboard.launch(pdef)
+    r = @dashboard.wait_for(wfid)
+
+    assert_equal '12', r['workitem']['fields']['f0']
+    assert_equal '12/', @tracer.to_s
+  end
+
+  def test_set_if
+
+    pdef = Ruote.define do
+      set 'f:x' => '${v:v_r}', :if => '${v:v_r}'
+    end
+
+    wfid = @dashboard.launch(pdef)
+    r = @dashboard.wait_for(wfid)
+
+    assert_equal('terminated', r['action'])
+    assert_equal({}, r['workitem']['fields'])
   end
 end
 

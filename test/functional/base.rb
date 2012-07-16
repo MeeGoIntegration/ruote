@@ -7,43 +7,34 @@
 
 require 'fileutils'
 
-require File.join(File.dirname(__FILE__), '..', 'test_helper.rb')
-require File.join(File.dirname(__FILE__), 'storage_helper.rb')
+require File.expand_path('../../test_helper', __FILE__)
+require File.expand_path('../storage_helper', __FILE__)
+require File.expand_path('../signals', __FILE__)
 
 require 'ruote'
 
 
-trap 'USR2' do
-
-  require 'irb'
-  require 'irb/completion'
-
-  IRB.setup(nil)
-  ws = IRB::WorkSpace.new(binding)
-  irb = IRB::Irb.new(ws)
-  IRB::conf[:MAIN_CONTEXT] = irb.context
-  irb.eval_input
-end
-
-trap 'INT' do
-  #
-  # why do I have to do that ?
-  #
-  puts
-  puts '-' * 80
-  caller.each { |l| p l }
-  puts '-' * 80
-  exit 1
-end if RUBY_VERSION.match(/^1.9./)
-
-puts "pid #{$$}"
-
-
+#
+# Most of the functional tests extend this class.
+#
 module FunctionalBase
+
+  # For functional tests that want to provide their own setup or teardown
+  # and still have an opportunity to call this base's setup/teardown
+  #
+  def self.included(target)
+
+    target.class_eval do
+      alias base_setup setup
+      alias base_teardown teardown
+    end
+  end
 
   def setup
 
-    p self.class if ARGV.include?('-T') or ARGV.include?('-N')
+    if ARGV.include?('-T') || ARGV.include?('-N') || ENV['NOISY'] == 'true'
+      p self.class
+    end
 
     #require 'ruote/util/look'
     #Ruote::Look.dump_lsof
@@ -51,48 +42,56 @@ module FunctionalBase
       #
       # uncomment this when "too many open files"
 
-    @engine =
-      Ruote::Engine.new(
-        Ruote::Worker.new(
-          determine_storage(
-            's_logger' => [ 'ruote/log/test_logger', 'Ruote::TestLogger' ])))
+    sto = determine_storage({})
+
+    @dashboard = Ruote::Dashboard.new(
+      sto.class.name.match(/Worker$/) ? sto : Ruote::Worker.new(sto))
+
+    @engine = @dashboard
+      # for 'backward compatibility'
 
     $_test = self
-    $_engine = @engine
+    $_dashboard = @dashboard
       #
       # handy when hijacking (https://github.com/ileitch/hijack)
       # or flinging USR2 at the test process
 
     @tracer = Tracer.new
 
-    tracer = @tracer
-    @engine.context.instance_eval { @tracer = tracer }
+    Ruote::BlockParticipant.class_eval do
+      def tracer
+        @context.tracer
+      end
+      def stash
+        @context.stash
+      end
+    end
 
-    @engine.add_service('tracer', @tracer)
-    @engine.add_service('stash', {})
+    @dashboard.add_service('tracer', @tracer)
+    @dashboard.add_service('stash', {})
 
-    noisy if ARGV.include?('-N')
-
-    #noisy # uncommented, it makes all the tests noisy
+    noisy if ARGV.include?('-N') || ENV['NOISY'].to_s == 'true'
   end
 
   def teardown
 
-    @engine.shutdown
-    @engine.context.storage.purge!
-    @engine.context.storage.close if @engine.context.storage.respond_to?(:close)
+    return if @dashboard.nil?
+
+    @dashboard.shutdown
+    @dashboard.context.storage.purge!
+    @dashboard.context.storage.close if @dashboard.context.storage.respond_to?(:close)
   end
 
   def stash
 
-    @engine.context.stash
+    @dashboard.context.stash
   end
 
   def assert_log_count(count, &block)
 
-    c = @engine.context.logger.log.select(&block).size
+    c = @dashboard.context.logger.log.select(&block).size
 
-    #logger.to_stdout if ( ! @engine.context[:noisy]) && c != count
+    #logger.to_stdout if ( ! @dashboard.context[:noisy]) && c != count
 
     assert_equal count, c
   end
@@ -111,7 +110,7 @@ module FunctionalBase
     fields = args.last.is_a?(Hash) ? args.pop : {}
     expected_traces = args.collect { |et| et.is_a?(Array) ? et.join("\n") : et }
 
-    wfid = @engine.launch(pdef, fields)
+    wfid = @dashboard.launch(pdef, fields)
 
     r = wait_for(wfid)
 
@@ -133,7 +132,7 @@ module FunctionalBase
 
   def logger
 
-    @engine.context.logger
+    @dashboard.context.logger
   end
 
   protected
@@ -141,12 +140,12 @@ module FunctionalBase
   def noisy(on=true)
 
     puts "\nnoisy " + caller[0] if on
-    @engine.context.logger.noisy = true
+    @dashboard.context.logger.noisy = true
   end
 
   def wait_for(*wfid_or_part)
 
-    @engine.wait_for(*wfid_or_part)
+    @dashboard.wait_for(*wfid_or_part)
   end
 
   def assert_engine_clean(wfid)
@@ -157,7 +156,7 @@ module FunctionalBase
 
   def assert_no_errors(wfid)
 
-    errors = @engine.storage.get_many('errors', /#{wfid}$/)
+    errors = @dashboard.storage.get_many('errors', /#{wfid}$/)
 
     return if errors.size == 0
 
@@ -178,7 +177,7 @@ module FunctionalBase
 
   def assert_no_remaining_expressions(wfid)
 
-    expcount = @engine.storage.get_many('expressions').size
+    expcount = @dashboard.storage.get_many('expressions').size
     return if expcount == 0
 
     tf, _, tn = caller[2].split(':')
@@ -194,7 +193,7 @@ module FunctionalBase
     puts
     puts 'left :'
     puts
-    puts @engine.context.storage.dump('expressions')
+    puts @dashboard.context.storage.dump('expressions')
     puts
     puts '-' * 80
 
@@ -214,6 +213,7 @@ module FunctionalBase
   end
 end
 
+#
 # Re-opening workitem for a shortcut to a '_trace' field
 #
 class Ruote::Workitem
@@ -222,6 +222,9 @@ class Ruote::Workitem
   end
 end
 
+#
+# Our tracer class.
+#
 class Tracer
   attr_reader :s
   def initialize

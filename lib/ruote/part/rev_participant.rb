@@ -1,5 +1,5 @@
 #--
-# Copyright (c) 2005-2011, John Mettraux, jmettraux@gmail.com
+# Copyright (c) 2005-2012, John Mettraux, jmettraux@gmail.com
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -94,19 +94,25 @@ module Ruote
       ) unless @dir
     end
 
-    def consume(workitem)
+    def on_workitem
 
-      lookup_code(workitem).consume(workitem)
+      Ruote.participant_send(
+        lookup_code,
+        [ :on_workitem, :consume ],
+        'workitem' => workitem)
     end
 
-    def cancel(fei, flavour)
+    def on_cancel
 
-      lookup_code(fei).cancel(fei, flavour)
+      Ruote.participant_send(
+        lookup_code,
+        [ :on_cancel, :cancel ],
+        'fei' => fei, 'flavour' => flavour)
     end
 
     #--
     #def accept?(workitem)
-    #  part = lookup_code(workitem)
+    #  part = lookup_code
     #  part.respond_to?(:accept?) ? part.accept?(workitem) : true
     #end
     #
@@ -114,15 +120,18 @@ module Ruote
     # own accept?, it has to go in lookup_code
     #++
 
-    def on_reply(workitem)
+    def on_reply
 
-      part = lookup_code(workitem)
-      part.on_reply(workitem) if part.respond_to?(:on_reply)
+      part = lookup_code
+
+      if part.respond_to?(:on_reply)
+        Ruote.participant_send(part, :on_reply, 'workitem' => workitem)
+      end
     end
 
     def rtimeout(workitem)
 
-      part = lookup_code(workitem)
+      part = lookup_code
 
       part.respond_to?(:rtimeout) ? part.rtimeout(workitem) : nil
     end
@@ -131,9 +140,9 @@ module Ruote
 
     # Maybe "lookup_real_participant_code" would be a better name...
     #
-    def lookup_code(wi_or_fei)
+    def lookup_code
 
-      wi = wi_or_fei.is_a?(Ruote::Workitem) ?  wi_or_fei : workitem(wi_or_fei)
+      wi = workitem
 
       rev = wi.params['revision'] || wi.params['rev']
 

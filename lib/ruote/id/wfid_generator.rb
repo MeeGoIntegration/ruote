@@ -1,5 +1,5 @@
 #--
-# Copyright (c) 2005-2011, John Mettraux, jmettraux@gmail.com
+# Copyright (c) 2005-2012, John Mettraux, jmettraux@gmail.com
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -22,59 +22,38 @@
 # Made in Japan.
 #++
 
+require 'digest/md5'
+
 
 module Ruote
 
+  #
+  # An example of wfid generator.
+  #
   class WfidGenerator
 
     def initialize(context)
 
       @context = context
 
-      @last =
-        @context.storage.get('variables', 'last_wfid') ||
-        { 'type' => 'variables', '_id' => 'last_wfid', 'raw' => Time.now.utc.to_f }
+      @here = "#{Ruote.local_ip}!#{Process.pid}"
+      @counter = 0
+      #@mutex = Mutex.new
     end
 
     def generate
 
-      raw = get_raw
+      t = Time.now.utc
+      time = t.strftime('%Y%m%d-%H%M%S')
+      ms = t.to_f % 1.0
 
-      "#{raw.strftime('%Y%m%d%H%M%S')}-#{raw.usec}"
-    end
+      #c = @mutex.synchronize { @counter = (@counter + 1) % 10_000 }
+      c = @counter = (@counter + 1) % 10_000
 
-    protected
+      x = "#{ms}!#{Thread.current.object_id}!#{@here}!#{c}"
+      x = Digest::MD5.hexdigest(x)
 
-    def get_raw
-
-      lraw = @last['raw'] + 0.01
-
-      raw = Time.now.utc
-      raw = raw + 0.01 while raw.to_f <= lraw
-
-      @last['raw'] = raw.to_f
-
-      last = @context.storage.put(@last, :update_rev => true)
-
-      if last == true
-        #
-        # 'last' is gone, have to put new one
-        @last.delete('_rev')
-        get_raw
-
-      elsif last
-        #
-        # put failed, have to re-ask
-        #
-        @last = last
-        get_raw
-
-      else
-        #
-        # put successful, we can build a new wfid
-        #
-        raw
-      end
+      "#{time}-#{x}"
     end
   end
 end

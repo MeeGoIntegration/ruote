@@ -6,7 +6,7 @@
 # Sat Apr 30 13:22:49 JST 2011
 #
 
-require File.join(File.dirname(__FILE__), '..', 'test_helper.rb')
+require File.expand_path('../../test_helper', __FILE__)
 
 require 'ruote/reader/radial'
 
@@ -58,6 +58,9 @@ class RadialReaderTest < Test::Unit::TestCase
     'concurrent-iterator')
   assert_read(
     [ 'define', { 'alpha' => nil }, [] ],
+    'define alpha')
+  assert_read(
+    [ 'define', { 'alpha' => nil }, [] ],
     'define "alpha"')
   assert_read(
     [ 'define', { 'bravo' => nil }, [] ],
@@ -93,8 +96,14 @@ class RadialReaderTest < Test::Unit::TestCase
     [ 'define', { 'india' => nil, 'mount' => 'batten' }, [] ],
     'define "india", mount: batten # whatever')
   assert_read(
-    [ 'romeo', { 'timeout' => '2d'}, [] ],
+    [ 'romeo', { 'timeout' => '2d' }, [] ],
     'romeo timeout: 2d # whatever')
+  assert_read(
+    [ 'audit', { '$href' => nil, 'summary' => 'scale up' }, [] ],
+    'audit $href, summary: "scale up"')
+  assert_read(
+    [ 'audit', { '${href}' => nil, 'summary' => 'scale up' }, [] ],
+    'audit ${href}, summary: "scale up"')
 
   assert_read(
     [ 'sierra', {}, [] ],
@@ -134,6 +143,22 @@ class RadialReaderTest < Test::Unit::TestCase
   #  'echo "quebec", b: %w[ A B ] # whatever')
 
   #
+  # weird expression [names]
+
+  assert_read(
+    [ 'server_array.toto.first', {}, [] ],
+    'server_array.toto.first')
+  assert_read(
+    [ 'server_array.${v:/sa_name}.first', {}, [] ],
+    'server_array.${v:/sa_name}.first')
+  assert_read(
+    [ 'server_array.${v:/sa_name}.first', { 'nada' => nil, 'ok' => true }, [] ],
+    'server_array.${v:/sa_name}.first nada, ok:true')
+  assert_read(
+    [ 'server_array.take[-2]', {}, [] ],
+    'server_array.take[-2]')
+
+  #
   # more complete tests
 
   def test_error_reporting
@@ -147,7 +172,7 @@ class RadialReaderTest < Test::Unit::TestCase
     rescue => e
     end
 
-    assert_equal Parslet::ParseFailed, e.class
+    assert_equal Parslet::UnconsumedInput, e.class
     assert_not_nil e.error_tree
 
     #puts e.error_tree
@@ -228,6 +253,60 @@ process_definition name: "nada"
       tree)
   end
 
+  def test_lonely_comma
+
+    tree = Ruote::RadialReader.read(%{
+      echo,
+        e: 5,
+        f: 6
+    })
+
+    assert_equal(
+      [ 'echo', { 'e' => 5, 'f' => 6 }, [] ],
+      tree)
+  end
+
+  def test_multine_attributes
+
+    tree = Ruote::RadialReader.read(%{
+      define vladivostok
+        charly a: 1,
+          b: 2
+        doug c:
+          3, d:
+          4
+    })
+
+    assert_equal(
+      [ 'define', { 'vladivostok' => nil }, [
+        [ 'charly', { 'a' => 1, 'b' => 2 }, [] ],
+        [ 'doug', { 'c' => 3, 'd' => 4 }, [] ]
+      ] ],
+      tree)
+  end
+
+  def test_multine_hashes_and_arrays
+
+    tree = Ruote::RadialReader.read(%{
+      define vladivostok
+        alpha data: {
+          a: 1,
+          b: 2
+        }
+        bravo data: [
+          1,
+          2
+        ]
+    })
+
+    assert_equal(
+      [ 'define', { 'vladivostok' => nil }, [
+        [ 'alpha', { 'data' => { 'a' => 1, 'b' => 2 } }, [] ],
+        [ 'bravo', { 'data' => [ 1, 2 ] }, [] ]
+      ] ],
+      tree)
+  end
+
   def test_unicode
 
     tree = Ruote::RadialReader.read(%{
@@ -287,15 +366,44 @@ process_definition name: "nada"
       tree)
   end
 
+  def test_string_escaping
+
+    tree = Ruote::RadialReader.read(%q{
+      define
+        participant toto, msg: "a\"'a"
+        participant toto, msg: 'b"\'b'
+    })
+
+    assert_equal(
+      [ 'define', {}, [
+        [ 'participant', { 'toto' => nil, 'msg' => "a\"'a" }, [] ],
+        [ 'participant', { 'toto' => nil, 'msg' => "b\"'b" }, [] ]
+      ] ],
+      tree)
+  end
+
+  def test_regex
+
+    tree = Ruote::RadialReader.read(%{
+      on_error /a b/: error_handler
+    })
+
+    assert_equal(
+      [ 'on_error', { '/a b/' => 'error_handler' }, [] ],
+      tree)
+  end
+
   def test_regexes
 
     tree = Ruote::RadialReader.read(%{
       process_definition "nada"
+        on_error /unknown/: error_handler
         participant nada, fix: /nada/
     })
 
     assert_equal(
       [ 'process_definition', { 'nada' => nil }, [
+        [ 'on_error', { '/unknown/' => 'error_handler' }, [] ],
         [ 'participant', { 'nada' => nil, 'fix' => '/nada/' }, [] ]
       ]],
       tree)
@@ -314,6 +422,40 @@ process_definition name: "nada"
         []
       ],
       Ruote::RadialReader.read(pdef))
+  end
+
+  def test_regex_att_keys
+
+    pdef = %{
+      sequence on_error: [
+        { /unknown participant/: alpha }, { null: bravo }
+      ]
+        nada
+    }
+
+    assert_equal(
+      [ 'sequence', { 'on_error' => [
+        { '/unknown participant/' => 'alpha' }, { nil => 'bravo' }
+        ] }, [
+        [ 'nada', {}, [] ]
+      ] ],
+      Ruote::RadialReader.read(pdef))
+  end
+
+  def test_regex_escape
+
+    tree = Ruote::RadialReader.read(%q{
+      define
+        participant nada, r: /nada\ntoto/
+        participant nada, r: /nada\/toto/
+    })
+
+    assert_equal(
+      [ 'define', {}, [
+        [ 'participant', { 'nada' => nil, 'r' => "/nada\ntoto/" }, [] ],
+        [ 'participant', { 'nada' => nil, 'r' => "/nada/toto/" }, [] ]
+      ]],
+      tree)
   end
 end
 

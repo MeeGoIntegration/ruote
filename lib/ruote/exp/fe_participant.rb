@@ -1,5 +1,5 @@
 #--
-# Copyright (c) 2005-2011, John Mettraux, jmettraux@gmail.com
+# Copyright (c) 2005-2012, John Mettraux, jmettraux@gmail.com
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -131,7 +131,7 @@ module Ruote::Exp
       h.participant_name = (attribute(:ref) || attribute_text).to_s
 
       raise ArgumentError.new(
-        "no participant name specified"
+        'no participant name specified'
       ) if h.participant_name == ''
 
       h.participant ||=
@@ -142,12 +142,32 @@ module Ruote::Exp
       ) if h.participant.nil?
 
       #
+      # trigger on_apply if the participant sports it
+
+      pa = @context.plist.instantiate(
+        h.participant, :if_respond_to? => :on_apply)
+
+      Ruote.participant_send(
+        pa, :on_apply, 'workitem' => Ruote::Workitem.new(h.applied_workitem)
+      ) if pa
+
+      #
       # dispatch to participant
 
       h.applied_workitem['participant_name'] = h.participant_name
+
       h.applied_workitem['fields']['params'] = compile_atts
 
-      schedule_timeout(h.participant)
+      h.applied_workitem['fields'].delete('t')
+      h.applied_workitem['fields'].delete('__result__')
+
+      h.applied_workitem['re_dispatch_count'] = 0
+
+      if tree.last.any?
+        h.applied_workitem['fields']['params']['__children__'] = dsub(tree.last)
+      end
+
+      consider_participant_timers(h.participant)
 
       persist_or_raise
 
@@ -160,6 +180,8 @@ module Ruote::Exp
     end
 
     def cancel(flavour)
+
+      cancel_flanks(flavour)
 
       return reply_to_parent(h.applied_workitem) unless h.participant_name
         # no participant, reply immediately
@@ -186,7 +208,9 @@ module Ruote::Exp
 
       pa = @context.plist.instantiate(pinfo, :if_respond_to? => :on_reply)
 
-      pa.on_reply(Ruote::Workitem.new(workitem)) if pa
+      Ruote.participant_send(
+        pa, :on_reply, 'workitem' => Ruote::Workitem.new(workitem)
+      ) if pa
 
       super(workitem)
     end
@@ -214,32 +238,39 @@ module Ruote::Exp
         # let's not care if it fails...
     end
 
-    # Overriden with an empty behaviour. The work is now done a bit later
-    # via the #schedule_timeout method.
-    #
-    def consider_timeout
-    end
-
     # Determines and schedules timeout if any.
     #
     # Note that process definition timeout has priority over participant
     # specified timeout.
     #
-    def schedule_timeout(p_info)
+    def consider_participant_timers(p_info)
 
-      timeout = attribute(:timeout)
+      return if h.has_timers
+        # process definition takes precedence over participant defined timers.
 
-      unless timeout
+      timers = nil
 
-        pa = @context.plist.instantiate(p_info, :if_respond_to? => :rtimeout)
+      [ :rtimers, :timers, :rtimeout ].each do |meth|
 
-        timeout = (pa.method(:rtimeout).arity == 0 ?
-          pa.rtimeout :
-          pa.rtimeout(Ruote::Workitem.new(h.applied_workitem))
-        ) if pa
+        pa = @context.plist.instantiate(p_info, :if_respond_to? => meth)
+
+        next unless pa
+
+        timers = Ruote.participant_send(
+          pa, meth, 'workitem' => Ruote::Workitem.new(h.applied_workitem))
+
+        break if timers
       end
 
-      do_schedule_timeout(timeout)
+      return unless timers
+
+      timers = if timers.index(':')
+        timers.split(/,/)
+      else
+        [ "#{timers}: timeout" ]
+      end
+
+      schedule_timers(timers)
     end
 
     def do_pause(msg)

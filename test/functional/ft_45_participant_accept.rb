@@ -5,7 +5,7 @@
 # Wed Jul 21 13:37:59 JST 2010
 #
 
-require File.join(File.dirname(__FILE__), 'base')
+require File.expand_path('../base', __FILE__)
 
 require 'ruote/part/local_participant'
 
@@ -53,8 +53,8 @@ class FtParticipantAcceptTest < Test::Unit::TestCase
       end
     end
 
-    @engine.register_participant 'a.+', MyParticipant, 'filter' => '^ab'
-    @engine.register_participant '.+', MyOtherParticipant
+    @dashboard.register_participant 'a.+', MyParticipant, 'filter' => '^ab'
+    @dashboard.register_participant '.+', MyOtherParticipant
 
     #noisy
 

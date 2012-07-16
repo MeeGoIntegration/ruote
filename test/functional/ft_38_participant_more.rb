@@ -7,13 +7,49 @@
 # Qcon Tokyo, special day
 #
 
-require File.join(File.dirname(__FILE__), 'base')
+require File.expand_path('../base', __FILE__)
 
 require 'ruote/part/local_participant'
 
 
 class FtParticipantMoreTest < Test::Unit::TestCase
   include FunctionalBase
+
+  #
+  # tests about reject / re_dispatch
+
+  def test_re_dispatch_count_is_initially_zero
+
+    @dashboard.register { catchall }
+
+    wfid = @dashboard.launch(Ruote.define { alpha })
+    r = @dashboard.wait_for(:alpha)
+
+    assert_equal 0, r['workitem']['re_dispatch_count']
+  end
+
+  class CountingParticipant
+    include Ruote::LocalParticipant
+    def on_workitem
+      context.tracer << "#{workitem.re_dispatch_count}\n"
+      if workitem.re_dispatch_count < 5
+        re_dispatch
+      else
+        reply
+      end
+    end
+  end
+
+  def test_re_dispatch_count_is_incremented_at_each_re_dispatch
+
+    @dashboard.register { counter CountingParticipant }
+
+    wfid = @dashboard.launch(Ruote.define { counter })
+
+    @dashboard.wait_for(wfid)
+
+    assert_equal %w[ 0 1 2 3 4 5 ], @tracer.to_a
+  end
 
   class DifficultParticipant
     include Ruote::LocalParticipant
@@ -38,11 +74,53 @@ class FtParticipantMoreTest < Test::Unit::TestCase
       alpha
     end
 
-    @engine.register_participant :alpha, DifficultParticipant
-
-    #noisy
+    @dashboard.register_participant :alpha, DifficultParticipant
 
     assert_trace(%w[ diff diff ], pdef)
+  end
+
+  # https://groups.google.com/d/topic/openwferu-users/_k-VIQwMvXw/discussion
+  #
+  def test_re_dispatch_outside_of_participant
+
+    @dashboard.register :alpha, Ruote::StorageParticipant
+
+    pdef = Ruote.process_definition do
+      alpha
+    end
+
+    wfid = @dashboard.launch(pdef)
+    r = @dashboard.wait_for('dispatched')
+
+    wi = @dashboard.storage_participant.first
+
+    @dashboard.storage_participant.re_dispatch(wi, :in => '100')
+
+    sleep 10
+  end
+
+  class ReluctantParticipant
+    include Ruote::LocalParticipant
+    def initialize(opts)
+    end
+    def consume(workitem)
+      context.tracer << "x\n"
+      if workitem.fields['re_dispatched'].nil?
+        workitem.fields['re_dispatched'] = true
+        re_dispatch
+      else
+        reply_to_engine(workitem)
+      end
+    end
+  end
+
+  # Reject and re_dispatch are aliases.
+  #
+  def test_participant_re_dispatch_no_params
+
+    @dashboard.register_participant :alpha, ReluctantParticipant
+
+    assert_trace(%w[ x x ], Ruote.define { alpha })
   end
 
   class FightingParticipant
@@ -61,15 +139,13 @@ class FtParticipantMoreTest < Test::Unit::TestCase
     end
   end
 
-  # Reject and re_dispatch are aliases.
-  #
   def test_participant_re_dispatch
 
     pdef = Ruote.process_definition do
       alpha
     end
 
-    @engine.register_participant :alpha, FightingParticipant
+    @dashboard.register_participant :alpha, FightingParticipant
 
     #noisy
 
@@ -96,8 +172,6 @@ class FtParticipantMoreTest < Test::Unit::TestCase
     end
   end
 
-  # Reject and re_dispatch are aliases.
-  #
   # re_dispatch with an :in or an :at parameter makes sure the dispatch is
   # performed once more, but a bit later (:in / :at timepoint).
   #
@@ -107,11 +181,9 @@ class FtParticipantMoreTest < Test::Unit::TestCase
       alpha
     end
 
-    @engine.register_participant :alpha, RetryParticipant
+    @dashboard.register_participant :alpha, RetryParticipant
 
-    #noisy
-
-    wfid = @engine.launch(pdef)
+    wfid = @dashboard.launch(pdef)
     wait_for(wfid)
 
     times = @tracer.to_s.split("\n").collect { |t| Float(t) }
@@ -130,18 +202,21 @@ class FtParticipantMoreTest < Test::Unit::TestCase
       alpha
     end
 
-    @engine.register_participant :alpha, RetryParticipant, 'delay' => '1m'
+    @dashboard.register_participant :alpha, RetryParticipant, 'delay' => '1m'
 
     #noisy
 
-    wfid = @engine.launch(pdef)
+    wfid = @dashboard.launch(pdef)
     sleep 0.7
 
-    @engine.cancel_process(wfid)
+    @dashboard.cancel_process(wfid)
     wait_for(wfid)
 
-    assert_equal 0, @engine.storage.get_many('schedules').size
+    assert_equal 0, @dashboard.storage.get_many('schedules').size
   end
+
+  #
+  # tests about stash_put and stash_get
 
   BLACKBOARD = {}
 
@@ -150,11 +225,12 @@ class FtParticipantMoreTest < Test::Unit::TestCase
     def initialize(opts)
     end
     def consume(workitem)
-      put(workitem.fei, 'token' => workitem.params['token'])
+      put('token0' => workitem.params['token0'])
+      put('token1', workitem.params['token1'])
     end
     def cancel(fei, flavour)
-      BLACKBOARD['token'] = get(fei, 'token')
-      BLACKBOARD['all'] = get(fei)
+      BLACKBOARD['token0'] = get('token0')
+      BLACKBOARD['all'] = get
     end
   end
 
@@ -166,28 +242,109 @@ class FtParticipantMoreTest < Test::Unit::TestCase
     BLACKBOARD.clear
 
     pdef = Ruote.process_definition do
-      alpha :token => 'of esteem'
+      alpha :token0 => 'of esteem', :token1 => 'of whatever'
     end
 
-    @engine.register_participant :alpha, StashingParticipant
+    @dashboard.register_participant :alpha, StashingParticipant
 
-    #noisy
+    #@dashboard.noisy = true
 
-    wfid = @engine.launch(pdef)
+    wfid = @dashboard.launch(pdef)
     wait_for(:alpha)
+    wait_for(1)
 
-    sleep 0.350 # since wait_for(:alpha) releases too early sometimes
-
-    ps = @engine.process(wfid)
+    ps = @dashboard.process(wfid)
     fexp = ps.expressions.find { |e| e.fei.expid == '0_0' }
 
-    assert_equal({ 'token' => 'of esteem' }, fexp.h.stash)
+    assert_equal(
+      { 'token0' => 'of esteem', 'token1' => 'of whatever' },
+      fexp.h.stash)
 
-    @engine.cancel_process(wfid)
+    @dashboard.cancel_process(wfid)
     wait_for(wfid)
 
-    assert_equal('of esteem', BLACKBOARD['token'])
-    assert_equal({ 'token' => 'of esteem' }, BLACKBOARD['all'])
+    assert_equal(
+      'of esteem',
+      BLACKBOARD['token0'])
+    assert_equal(
+      { 'token0' => 'of esteem', 'token1' => 'of whatever' },
+      BLACKBOARD['all'])
+  end
+
+  class Doubtful
+    include Ruote::LocalParticipant
+
+    def on_workitem
+      context.tracer << "canceled:#{is_canceled?}\n"
+      context.tracer << "gone:#{is_gone?}\n"
+      sleep 5
+      context.tracer << "cancelled:#{is_cancelled?}\n"
+      context.tracer << "gone:#{is_gone?}\n"
+    end
+
+    def on_cancel
+      # nothing
+    end
+  end
+
+  def test_is_cancelled
+
+    @dashboard.register :alpha, Doubtful
+
+    pdef = Ruote.define do
+      alpha
+    end
+
+    #@dashboard.noisy = true
+
+    wfid = @dashboard.launch(pdef)
+
+    @dashboard.wait_for(:alpha)
+    sleep 1.0 # making sure on_workitem reaches its sleep
+
+    @dashboard.cancel(@dashboard.ps(wfid).expressions.last)
+
+    @dashboard.wait_for(wfid)
+
+    sleep 10
+
+    assert_equal(
+      %w[ canceled:false gone:false cancelled:true gone:true ],
+      @tracer.to_a)
+  end
+
+  class Robust
+    include Ruote::LocalParticipant
+
+    def on_workitem
+      context.tracer << "on_workitem\n"
+      sleep 5
+      workitem.fields['toto'] = 'seen'
+      reply
+    end
+
+    def on_cancel
+      context.tracer << "on_cancel\n"
+      false
+    end
+  end
+
+  def test_on_cancel_returning_false
+
+    @dashboard.register :rob, Robust
+
+    #@dashboard.noisy = true
+
+    wfid = @dashboard.launch(Ruote.define { rob })
+
+    @dashboard.wait_for(:rob)
+
+    @dashboard.cancel(@dashboard.ps(wfid).expressions.last)
+
+    r = @dashboard.wait_for(wfid)
+
+    assert_equal 'seen', r['workitem']['fields']['toto']
+    assert_equal %w[ on_cancel on_workitem ], @tracer.to_a.sort
   end
 end
 

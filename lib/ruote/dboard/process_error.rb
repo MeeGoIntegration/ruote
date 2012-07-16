@@ -1,5 +1,5 @@
 #--
-# Copyright (c) 2005-2011, John Mettraux, jmettraux@gmail.com
+# Copyright (c) 2005-2012, John Mettraux, jmettraux@gmail.com
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -30,6 +30,12 @@ module Ruote
   #
   class ProcessError
 
+    # When this instance was returned by Ruote::Dashboard#ps or
+    # Ruote::Dashboard#process, this attribute will point to the flow
+    # expression where the error occurred.
+    #
+    attr_accessor :flow_expression
+
     def initialize(h)
       @h = h
     end
@@ -44,6 +50,10 @@ module Ruote
 
     def msg
       @h['msg']
+    end
+
+    def details
+      @h['details']
     end
 
     def fei
@@ -73,6 +83,8 @@ module Ruote
       @h
     end
 
+    alias h to_h
+
     # 'apply', 'reply', 'receive', ... Indicates in which "direction" the
     # error occured.
     #
@@ -86,7 +98,8 @@ module Ruote
       @h['msg']['workitem'] && @h['msg']['workitem']['fields']
     end
 
-    # Returns an instance of Ruote::Workitem
+    # Returns an instance of Ruote::Workitem (the workitem as it was
+    # at the error point)
     #
     def workitem
       Ruote::Workitem.new(msg['workitem'])

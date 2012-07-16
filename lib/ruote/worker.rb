@@ -1,5 +1,5 @@
 #--
-# Copyright (c) 2005-2011, John Mettraux, jmettraux@gmail.com
+# Copyright (c) 2005-2012, John Mettraux, jmettraux@gmail.com
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -41,6 +41,8 @@ module Ruote
     PROC_ACTIONS = %w[ cancel kill pause resume ].collect { |a| a + '_process' }
     DISP_ACTIONS = %w[ dispatch dispatch_cancel dispatch_pause dispatch_resume ]
 
+    attr_reader :name
+
     attr_reader :storage
     attr_reader :context
 
@@ -49,14 +51,27 @@ module Ruote
 
     # Given a storage, creates a new instance of a Worker.
     #
-    def initialize(storage)
+    def initialize(name, storage=nil)
 
-      @subscribers = []
-        # must be ready before the storage is created
-        # services like Logger to subscribe to the worker
+      if storage.nil?
+        storage = name
+        name = nil
+      end
 
-      @storage = storage
-      @context = Ruote::Context.new(storage, self)
+      @name = name || 'worker'
+
+      if storage.respond_to?(:storage)
+        @storage = storage.storage
+        @context = storage.context
+      else
+        @storage = storage
+        @context = Ruote::Context.new(storage)
+      end
+
+      service_name = @name
+      service_name << '_worker' unless service_name.match(/worker$/)
+
+      @context.add_service(service_name, self)
 
       @last_time = Time.at(0.0).utc # 1970...
 
@@ -64,7 +79,10 @@ module Ruote
       @run_thread = nil
 
       @msgs = []
-      @sleep_time = 0.000
+
+      @sleep_time = @context['restless_worker'] ? nil : 0.000
+
+      @info = @context['worker_info_enabled'] == false ? nil : Info.new(self)
     end
 
     # Runs the worker in the current thread. See #run_in_thread for running
@@ -79,12 +97,12 @@ module Ruote
     #
     def run_in_thread
 
-      Thread.abort_on_exception = true
-        # TODO : remove me at some point
+      #Thread.abort_on_exception = true
 
       @running = true
 
       @run_thread = Thread.new { run }
+      @run_thread['worker_name'] = @name
     end
 
     # Joins the run thread of this worker (if there is no such thread, this
@@ -93,14 +111,6 @@ module Ruote
     def join
 
       @run_thread.join if @run_thread
-    end
-
-    # Loggers and trackers call this method when subscribing for events /
-    # actions in this worker.
-    #
-    def subscribe(actions, subscriber)
-
-      @subscribers << [ actions, subscriber ]
     end
 
     # Shuts down this worker (makes sure it won't fetch further messages
@@ -112,7 +122,7 @@ module Ruote
 
       begin
         @run_thread.join
-      rescue Exception => e
+      rescue => e
       end
     end
 
@@ -144,13 +154,43 @@ module Ruote
 
     protected
 
+    # Hiding the details of @storage.get_msgs away.
+    #
+    def get_msgs
+
+      # since we have to access the storage, let's ask him if we should
+      # stop or pause.
+
+      state =
+        @context['worker_state_enabled'] &&
+        (@storage.get('variables', 'worker') || {})['state']
+
+      case state
+        when 'stopped' then (@running = false; return [])
+        when 'paused' then return []
+      end
+
+      # green, let's get the next batch of messages to process
+
+      if @storage.method(:get_msgs).arity == 0
+        # fortunately method and arity are cheap
+        @storage.get_msgs
+      else
+        @storage.get_msgs(self)
+      end
+    end
+
     # One worker step, fetches schedules and triggers those whose time has
     # came, then fetches msgs and processes them.
     #
     def step
 
+      msg = nil
       now = Time.now.utc
       delta = now - @last_time
+
+      #
+      # trigger schedules whose time has come
 
       if delta >= 0.8
         #
@@ -161,9 +201,10 @@ module Ruote
         @storage.get_schedules(delta, now).each { |sche| trigger(sche) }
       end
 
-      # msgs
+      #
+      # process msgs (atomic workflow operations)
 
-      @msgs = @storage.get_msgs if @msgs.empty?
+      @msgs = get_msgs if @msgs.empty?
 
       processed = 0
       collisions = 0
@@ -184,28 +225,105 @@ module Ruote
 
         #@msgs.concat(@storage.get_local_msgs)
 
-        #print r == false ? '*' : '.'
-
         break if Time.now.utc - @last_time >= 0.8
       end
 
-      #p processed
+      #
+      # batch over, let's rest
 
-      if processed == 0
+      take_a_rest(processed)
+
+    rescue => err
+
+      handle_step_error(err, msg) # msg may be nil
+    end
+
+    # This default implementation dumps error information to $stderr as
+    # soon as #step intercepts the error.
+    #
+    # Normally such information should only appear when developing a
+    # storage, the information here is thus helpful for storage developers.
+    # If such info is emitted in production or in application development,
+    # you should pass the info to the storage developer/maintainer.
+    #
+    # Feel free to override this method if you need it to output to
+    # a channel different than $stderr (or rebind $stderr).
+    #
+    # The second parameter is "msg", if the error occured while processing a
+    # msg, then this message is passed to handle_step_error. msg will be
+    # nil if the error occurred while doing get_msgs or get_schedules.
+    #
+    def handle_step_error(err, msg)
+
+      $stderr.puts '#' * 80
+      $stderr.puts
+      $stderr.puts '** worker#step intercepted exception **'
+      $stderr.puts
+      $stderr.puts "Please report issue or fix your #{@storage.class} impl,"
+      $stderr.puts
+      $stderr.puts "or override Ruote::Worker#handle_step_error(e, msg) so that"
+      $stderr.puts "the issue is dealt with appropriately. For example:"
+      $stderr.puts
+      $stderr.puts "    class Ruote::Worker"
+      $stderr.puts "      def handle_step_error(e, msg)"
+      $stderr.puts "        logger.error('ruote step error: ' + e.inspect)"
+      $stderr.puts "        mailer.send_error('admin@acme.com', e)"
+      $stderr.puts "      end"
+      $stderr.puts "    end"
+      $stderr.puts
+      $stderr.puts '# ' * 40
+      $stderr.puts
+      $stderr.puts 'error class/message/backtrace:'
+      $stderr.puts err.class.name
+      $stderr.puts err.message.inspect
+      $stderr.puts *err.backtrace
+      $stderr.puts err.details if err.respond_to?(:details)
+      $stderr.puts
+      $stderr.puts 'msg:'
+      if msg && msg.is_a?(Hash)
+        $stderr.puts msg.select { |k, v|
+          %w[ action wfid fei ].include?(k)
+        }.inspect
+      else
+        $stderr.puts msg.inspect
+      end
+      $stderr.puts
+      $stderr.puts '#' * 80
+
+      $stderr.flush
+    end
+
+    # In order not to hammer the storage for msgs too much, take a rest.
+    #
+    # If the number of processed messages is more than zero, there are probably
+    # more msgs coming, no time for a rest...
+    #
+    # If @sleep_time is nil (restless_worker option set to true), the worker
+    # will never rest.
+    #
+    def take_a_rest(msgs_processed)
+
+      return if @sleep_time == nil
+
+      if msgs_processed == 0
+
         @sleep_time += 0.001
         @sleep_time = 0.499 if @sleep_time > 0.499
+
         sleep(@sleep_time)
+
       else
+
         @sleep_time = 0.000
       end
     end
 
     # Given a schedule, attempts to trigger it.
     #
-    # It first tries to
-    # reserve the schedule. If the reservation fails (another worker
-    # was successful probably), false is returned. The schedule is
-    # triggered if the reservation was successful, true is returned.
+    # It first tries to reserve the schedule. If the reservation fails
+    # (another worker was successful probably), false is returned.
+    # The schedule is triggered if the reservation was successful, true
+    # is returned.
     #
     def trigger(schedule)
 
@@ -234,51 +352,60 @@ module Ruote
 
       begin
 
-        action = msg['action']
+        case msg['action']
 
-        if msg['tree']
-          #
-          # warning here, it could be a reply, with a 'tree' key...
+          when 'launch', 'apply', 'regenerate'
 
-          launch(msg)
+            launch(msg)
 
-        elsif EXP_ACTIONS.include?(action)
+          when *EXP_ACTIONS
 
-          Ruote::Exp::FlowExpression.do_action(@context, msg)
+            Ruote::Exp::FlowExpression.do_action(@context, msg)
 
-        elsif DISP_ACTIONS.include?(action)
+          when *DISP_ACTIONS
 
-          @context.dispatch_pool.handle(msg)
+            @context.dispatch_pool.handle(msg)
 
-        elsif PROC_ACTIONS.include?(action)
+          when *PROC_ACTIONS
 
-          self.send(action, msg)
+            self.send(msg['action'], msg)
 
-        #else
-          # msg got deleted, might still be interesting for a subscriber
+          when 'reput'
+
+            reput(msg)
+
+          when 'raise'
+
+            handle_msg_error(msg['msg'], msg['error'])
+
+          #else
+            # no special processing required for message, let it pass
+            # to the subscribers (the notify two lines after)
         end
 
-        notify(msg)
+        @context.notify(msg)
+          # notify subscribers of successfully processed msgs
 
-      rescue => exception
+      rescue => err
 
-        @context.error_handler.msg_handle(msg, exception)
+        handle_msg_error(msg, err)
       end
+
+      @context.storage.done(self, msg) if @context.storage.respond_to?(:done)
+
+      @info << msg if @info
+        # for the stats
 
       true
     end
 
-    # Given a successfully executed msg, now notifies all the subscribers
-    # interested in the kind of action the msg ordered.
+    # Passes the msg and the err it resulted in to the error_handler.
     #
-    def notify(msg)
+    # Some storage/worker implementation may want to override this.
+    #
+    def handle_msg_error(msg, err)
 
-      @subscribers.each do |actions, subscriber|
-
-        if actions == :all || actions.include?(msg['action'])
-          subscriber.notify(msg)
-        end
-      end
+      @context.error_handler.msg_handle(msg, err)
     end
 
     # Works for both the 'launch' and the 'apply' msgs.
@@ -297,24 +424,34 @@ module Ruote
       # msg['wfid'] only : it's a launch
       # msg['fei'] : it's a sub launch (a supplant ?)
 
-      wi['wf_name'] ||= (
-        tree[1]['name'] || tree[1].keys.find { |k| tree[1][k] == nil })
+      if is_launch?(msg, exp_class)
 
-      wi['wf_revision'] ||= (
-        tree[1]['revision'] || tree[1]['rev'])
+        name = tree[1]['name'] || tree[1].keys.find { |k| tree[1][k] == nil }
+        revision = tree[1]['revision'] || tree[1]['rev']
+
+        wi['wf_name'] ||= name
+        wi['wf_revision'] ||= revision
+
+        wi['sub_wf_name'] = name
+        wi['sub_wf_revision'] = revision
+      end
 
       exp_hash = {
         'fei' => msg['fei'] || {
           'engine_id' => @context.engine_id,
           'wfid' => msg['wfid'],
           'subid' => Ruote.generate_subid(msg.inspect),
-          'expid' => '0' },
+          'expid' => msg['expid'] || '0' },
         'parent_id' => msg['parent_id'],
-        'original_tree' => tree,
         'variables' => variables,
         'applied_workitem' => wi,
-        'forgotten' => msg['forgotten']
-      }
+        'forgotten' => msg['forgotten'],
+        'lost' => msg['lost'],
+        'flanking' => msg['flanking'],
+        'stash' => msg['stash'],
+        'trigger' => msg['trigger'],
+        'on_reply' => msg['on_reply'],
+        'supplanted' => msg['supplanted'] }
 
       if not exp_class
 
@@ -327,19 +464,30 @@ module Ruote
         exp_class = Ruote::Exp::SequenceExpression
       end
 
-      exp = exp_class.new(@context, exp_hash.merge!('original_tree' => tree))
+      exp_hash = exp_hash.reject { |k, v| v.nil? }
+        # compact nils away
+
+      exp_hash['original_tree'] = tree
+        # keep track of original tree
+
+      exp = exp_class.new(@context, exp_hash)
 
       exp.initial_persist
-      exp.do_apply(msg)
+      exp.do(:apply, msg)
     end
 
     # Returns true if the msg is a "launch" (ie not a simply "apply").
     #
     def is_launch?(msg, exp_class)
 
-      return false if exp_class != Ruote::Exp::DefineExpression
-      return true if msg['action'] == 'launch'
-      (msg['trigger'] == 'on_re_apply')
+      if exp_class != Ruote::Exp::DefineExpression
+        false
+      elsif %w[ launch regenerate ].include?(msg['action'])
+        true
+      else
+        (msg['trigger'] == 'on_re_apply')
+          # let re-apply "define" blocks, as in Ruote.define {}
+      end
     end
 
     # Handles a 'cancel_process' msg (translates it into a "cancel root
@@ -357,7 +505,7 @@ module Ruote
         'cancel',
         'fei' => root['fei'],
         'wfid' => msg['wfid'], # indicates this was triggered by cancel_process
-        'flavour' => msg['action'] == 'kill_process' ? 'kill' : nil)
+        'flavour' => msg['flavour'])
     end
 
     alias kill_process cancel_process
@@ -377,6 +525,119 @@ module Ruote
     end
 
     alias resume_process pause_process
+
+    # Reputs a doc or a msg.
+    #
+    # Used by certain storage implementations to pass documents around workers
+    # or to reschedule msgs (see ruote-swf).
+    #
+    def reput(msg)
+
+      if doc = msg['doc']
+
+        r = @storage.put(doc)
+
+        return unless r.is_a?(Hash)
+
+        doc['_rev'] = r['_rev']
+
+        reput(msg)
+
+      elsif msg = msg['msg']
+
+        @storage.put_msg(msg['action'], msg)
+      end
+    end
+
+    #
+    # Gathering stats about this worker.
+    #
+    # Those stats can then be obtained via Dashboard#worker_info
+    # (Engine#worker_info).
+    #
+    class Info
+
+      def initialize(worker)
+
+        @worker = worker
+        @ip = Ruote.local_ip
+        @hostname = Socket.gethostname
+        @system = `uname -a`.strip rescue nil
+
+        @since = Time.now
+        @msgs = []
+        @last_save = Time.now - 2 * 60
+      end
+
+      def <<(msg)
+
+        if msg['put_at'].nil?
+          puts '-' * 80
+          puts "msg missing 'put_at':"
+          pp msg
+          puts '-' * 80
+        end
+
+        @msgs << {
+          'processed_at' => Ruote.now_to_utc_s,
+          'wait_time' => Time.now - Time.parse(msg['put_at'])
+          #'action' => msg['action']
+        }
+
+        save if Time.now > @last_save + 60
+      end
+
+      protected
+
+      def save
+
+        doc = @worker.storage.get('variables', 'workers') || {}
+
+        doc['type'] = 'variables'
+        doc['_id'] = 'workers'
+
+        now = Time.now
+
+        @msgs = @msgs.drop_while { |msg|
+          Time.parse(msg['processed_at']) < now - 3600
+        }
+        mm = @msgs.drop_while { |msg|
+          Time.parse(msg['processed_at']) < now - 60
+        }
+
+        hour_count = @msgs.size < 1 ? 1 : @msgs.size
+        minute_count = mm.size < 1 ? 1 : mm.size
+
+        key = [ @worker.name, @ip, $$.to_s ].join('/')
+
+        (doc['workers'] ||= {})[key] = {
+
+          'class' => @worker.class.to_s,
+          'name' => @name,
+          'ip' => @ip,
+          'hostname' => @hostname,
+          'pid' => $$,
+          'system' => @system,
+          'put_at' => Ruote.now_to_utc_s,
+          'uptime' => Time.now - @since,
+
+          'processed_last_minute' =>
+            minute_count,
+          'wait_time_last_minute' =>
+            mm.inject(0.0) { |s, m| s + m['wait_time'] } / minute_count.to_f,
+          'processed_last_hour' =>
+            hour_count,
+          'wait_time_last_hour' =>
+            @msgs.inject(0.0) { |s, m| s + m['wait_time'] } / hour_count.to_f
+        }
+
+        r = @worker.storage.put(doc)
+
+        @last_save = Time.now
+
+        save if r != nil
+      end
+    end
   end
 end
 

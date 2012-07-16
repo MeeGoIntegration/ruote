@@ -5,7 +5,7 @@
 # Thu Jan  6 21:49:01 JST 2011
 #
 
-require File.join(File.dirname(__FILE__), 'base')
+require File.expand_path('../base', __FILE__)
 
 #require 'ruote/participant'
 
@@ -15,32 +15,31 @@ class FtEngineOnTerminateTest < Test::Unit::TestCase
 
   def test_no_on_terminate
 
-    assert_nil @engine.on_terminate
+    assert_nil @dashboard.on_terminate
   end
 
   def test_on_terminate
 
-    @engine.on_terminate = 'supervisor'
+    @dashboard.on_terminate = 'supervisor'
 
     assert_equal(
       [ 'define', {}, [ [ 'supervisor', {}, [] ] ] ],
-      @engine.on_terminate)
+      @dashboard.on_terminate)
   end
 
   def test_on_terminate_tree
 
-    @engine.on_terminate = Ruote.define do
+    @dashboard.on_terminate = Ruote.define do
       echo '${__terminate__.wfid} terminated'
     end
 
-    #@engine.noisy = true
+    #@dashboard.noisy = true
 
-    wfid = @engine.launch(Ruote.define do
+    wfid = @dashboard.launch(Ruote.define do
       echo 'main'
     end)
 
-    @engine.wait_for(wfid)
-    sleep 1
+    @dashboard.wait_for(8)
 
     assert_equal [ 'main', "#{wfid} terminated" ], @tracer.to_a
   end
@@ -49,22 +48,21 @@ class FtEngineOnTerminateTest < Test::Unit::TestCase
   #
   def test_no_on_terminate_when_on_error
 
-    @engine.on_error = Ruote.define do
+    @dashboard.on_error = Ruote.define do
       echo 'on_error'
     end
-    @engine.on_terminate = Ruote.define do
+    @dashboard.on_terminate = Ruote.define do
       echo 'on_terminate'
     end
 
-    #noisy
+    #@dashboard.noisy = true
 
-    wfid = @engine.launch(Ruote.define do
+    wfid = @dashboard.launch(Ruote.define do
       echo 'main'
       error 'in main'
     end)
 
-    @engine.wait_for(wfid)
-    sleep 1
+    @dashboard.wait_for(9)
 
     assert_equal [ 'main', 'on_error' ], @tracer.to_a
   end
@@ -73,21 +71,20 @@ class FtEngineOnTerminateTest < Test::Unit::TestCase
   #
   def test_on_error_when_on_terminate
 
-    @engine.on_error = Ruote.define do
+    @dashboard.on_error = Ruote.define do
       echo 'on_error'
     end
-    @engine.on_terminate = Ruote.define do
+    @dashboard.on_terminate = Ruote.define do
       error 'in on_terminate'
     end
 
-    #noisy
+    #@dashboard.noisy = true
 
-    wfid = @engine.launch(Ruote.define do
+    wfid = @dashboard.launch(Ruote.define do
       echo 'main'
     end)
 
-    @engine.wait_for(wfid)
-    sleep 1
+    @dashboard.wait_for(11)
 
     assert_equal [ 'main', 'on_error' ], @tracer.to_a
   end

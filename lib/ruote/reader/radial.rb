@@ -1,5 +1,5 @@
 #--
-# Copyright (c) 2005-2011, John Mettraux, jmettraux@gmail.com
+# Copyright (c) 2005-2012, John Mettraux, jmettraux@gmail.com
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -47,7 +47,7 @@ module Ruote
       rule(:comma) { spaces? >> str(',') >> spaces? }
       rule(:digit) { match('[0-9]') }
 
-      rule(:text) { match('[^\s:,=\[\]\{\}#]').repeat(1).as(:text) }
+      rule(:text) { match('[^\s:,=\[\]#]').repeat(1).as(:text) }
 
       rule(:number) {
         (
@@ -70,6 +70,12 @@ module Ruote
         ).repeat.as(:string) >> str("'")
       }
 
+      rule(:regex) {
+        str('/') >> (
+          str('\\') >> any | str('/').absent? >> any
+        ).repeat.as(:regex) >> str('/')
+      }
+
       rule(:array) {
         str('[') >> spaces? >>
         (value >> (comma >> value).repeat).maybe.as(:array) >>
@@ -82,16 +88,19 @@ module Ruote
         spaces? >> str('}')
       }
 
+      rule(:null) {
+        (str('null') | str('nil')).as(:null)
+      }
+
       rule(:value) {
         array | object |
         string | number |
         str('true').as(:true) | str('false').as(:false) |
-        str('null').as(:nil) | str('nil').as(:nil) |
-        text
+        null | regex | text
       }
 
       rule(:entry) {
-        ((string | text).as(:key) >> spaces? >>
+        ((string | null | regex | text).as(:key) >> spaces? >>
          (str(':') | str('=>')) >> spaces? >>
          value.as(:val)).as(:ent)
       }
@@ -104,8 +113,10 @@ module Ruote
       rule(:line) {
         (
           str(' ').repeat.as(:ind) >>
-          match('[^ \n#"\']').repeat(1).as(:exp) >>
-          (blanks >> attribute >> (comma >> attribute).repeat).as(:atts).maybe
+          match('[^ \n#"\',]').repeat(1).as(:exp) >>
+          (
+            (comma | blanks) >> attribute >> (comma >> attribute).repeat
+          ).as(:atts).maybe
         ).as(:line)
       }
 
@@ -135,7 +146,8 @@ module Ruote
         @indentation = indentation
         @children = []
 
-        @expname = expname.gsub(/-/, '_')
+        @expname = expname#.gsub(/-/, '_')
+        @expname.gsub!(/-/, '_') if @expname.match(/^[a-z\-]+$/)
         @attributes = attributes
       end
 
@@ -173,14 +185,14 @@ module Ruote
       rule(:line => subtree(:line)) { line }
 
       rule(:ind => simple(:i), :exp => simple(:e), :atts => subtree(:as)) {
-        atts = Array(as).inject({}) { |h, att| h[att.key] = att.val; h }
+        atts = Array(as).each_with_object({}) { |att, h| h[att.key] = att.val }
         Node.new(i.to_s.length, e.to_s, atts)
       }
       rule(:ind => simple(:i), :exp => simple(:e)) {
         Node.new(i.to_s.length, e.to_s, {})
       }
       rule(:ind => sequence(:i), :exp => simple(:e), :atts => subtree(:as)) {
-        atts = Array(as).inject({}) { |h, att| h[att.key] = att.val; h }
+        atts = Array(as).each_with_object({}) { |att, h| h[att.key] = att.val }
         Node.new(0, e.to_s, atts)
       }
       rule(:ind => sequence(:i), :exp => simple(:e)) {
@@ -194,19 +206,25 @@ module Ruote
         Value.new(t)
       }
 
+      rule(:string => simple(:st)) {
+        st.to_s.gsub(/\\(.)/) { eval("\"\\" + $~[1] + '"') }
+      }
+      rule(:regex => simple(:re)) {
+        '/' + re.to_s.gsub(/\\(.)/) { eval("\"\\" + $~[1] + '"') } + '/'
+      }
+
       rule(:text => simple(:te)) { te.to_s }
-      rule(:string => simple(:st)) { st.to_s }
       rule(:number => simple(:n)) { n.match(/[eE\.]/) ? Float(n) : Integer(n) }
       rule(:false => simple(:b)) { false }
       rule(:true => simple(:b)) { true }
-      rule(:nil => simple(:n)) { nil }
+      rule(:null => simple(:n)) { nil }
 
       rule(:array => subtree(:ar)) {
         ar.is_a?(Array) ? ar : [ ar ]
       }
       rule(:object => subtree(:es)) {
-        (es.is_a?(Array) ? es : [ es ]).inject({}) { |h, e|
-          e = e[:ent]; h[e[:key]] = e[:val]; h
+        (es.is_a?(Array) ? es : [ es ]).each_with_object({}) { |e, h|
+          e = e[:ent]; h[e[:key]] = e[:val]
         }
       }
     end

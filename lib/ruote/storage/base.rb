@@ -1,5 +1,5 @@
 #--
-# Copyright (c) 2005-2011, John Mettraux, jmettraux@gmail.com
+# Copyright (c) 2005-2012, John Mettraux, jmettraux@gmail.com
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -59,6 +59,18 @@ module Ruote
       get('configurations', key)
     end
 
+    def replace_engine_configuration(opts)
+
+      return if opts.delete('preserve_configuration')
+
+      conf = get('configurations', 'engine')
+
+      doc = opts.merge('type' => 'configurations', '_id' => 'engine')
+      doc['_rev'] = conf['_rev'] if conf
+
+      put(doc)
+    end
+
     #--
     # messages
     #++
@@ -73,6 +85,7 @@ module Ruote
       #(@local_msgs ||= []) << Ruote.fulldup(msg)
     end
 
+    #--
     #def get_local_msgs
     #  p @local_msgs
     #  if @local_msgs
@@ -83,6 +96,7 @@ module Ruote
     #    []
     #  end
     #end
+    #++
 
     def get_msgs
 
@@ -102,13 +116,27 @@ module Ruote
     # expressions
     #++
 
+    # Given a wfid, returns all the expressions of that process instance.
+    #
+    def find_expressions(wfid)
+
+      get_many('expressions', wfid)
+    end
+
+    # For a given wfid, returns all the expressions (array of Hash instances)
+    # that have a nil 'parent_id'.
+    #
+    def find_root_expressions(wfid)
+
+      find_expressions(wfid).select { |hexp| hexp['parent_id'].nil? }
+    end
+
+    # For a given wfid, fetches all the root expressions, sort by expid and
+    # return the first. Hopefully it's the right root_expression.
+    #
     def find_root_expression(wfid)
 
-      get_many('expressions', wfid).sort_by { |fexp|
-        fexp['fei']['expid']
-      }.select { |e|
-        e['parent_id'].nil?
-      }.first
+      find_root_expressions(wfid).sort_by { |hexp| hexp['fei']['expid'] }.first
     end
 
     # Given all the expressions stored here, returns a sorted list of unique
@@ -250,6 +278,38 @@ module Ruote
       end
     end
 
+    # Removes a process by removing all its schedules, expressions, errors,
+    # workitems and trackers.
+    #
+    # Warning: will not trigger any cancel behaviours at all, just removes
+    # the process.
+    #
+    def remove_process(wfid)
+
+      2.times do
+        # two passes
+
+        Thread.pass
+
+        %w[ schedules expressions errors workitems ].each do |type|
+          get_many(type, wfid).each { |d| delete(d) }
+        end
+
+        doc = get_trackers
+
+        doc['trackers'].delete_if { |k, v| k.end_with?("!#{wfid}") }
+
+        @context.storage.put(doc)
+      end
+    end
+
+    def dump(type)
+
+      require 'yaml'
+
+      YAML.dump({ type => get_many(type) })
+    end
+
     protected
 
     # Used by put_msg
@@ -303,6 +363,7 @@ module Ruote
         'original' => s,
         'at' => Ruote.time_to_utc_s(at),
         'owner' => owner_fei,
+        'wfid' => owner_fei['wfid'],
         'msg' => msg
       }
     end
@@ -322,27 +383,35 @@ module Ruote
       schedules.select { |sch| sch['at'] <= now }
     end
 
-    ## Returns true if the doc wfid is included in the wfids passed.
-    ##
-    #def wfid_match? (doc, wfids)
-    #  wfids.find { |wfid| doc['_id'].index(wfid) } != nil
-    #end
-
     # Used by #get_many. Returns true whenever one of the keys matches the
     # doc['_id']. Works with strings (_id ends with key) or regexes (_id matches
     # key).
     #
-    # It's a class method meant to be used by the various storage
-    # implementations.
+    def key_match?(type, keys, doc)
+
+      _id = doc.is_a?(Hash) ? doc['_id'] : doc
+
+      if keys.first.is_a?(String) && type == 'schedules'
+        keys.find { |key| _id.match(/#{key}-\d+$/) }
+      elsif keys.first.is_a?(String)
+        keys.find { |key| _id.end_with?(key) }
+      else # Regexp
+        keys.find { |key| _id.match(key) }
+      end
+    end
+
+    # (Only used by ruote-couch 2.2.x)
+    #
+    # TODO: remove me at some point
     #
     def self.key_match?(keys, doc)
 
       _id = doc.is_a?(Hash) ? doc['_id'] : doc
 
       if keys.first.is_a?(String)
-        keys.find { |key| _id[-key.length..-1] == key }
+        keys.find { |key| _id.end_with?(key) }
       else # Regexp
-        keys.find { |key| key.match(_id) }
+        keys.find { |key| _id.match(key) }
       end
     end
   end

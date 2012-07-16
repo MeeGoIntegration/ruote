@@ -5,7 +5,7 @@
 # Wed Jun 10 22:57:18 JST 2009
 #
 
-require File.join(File.dirname(__FILE__), 'base')
+require File.expand_path('../base', __FILE__)
 
 
 class FtDollarTest < Test::Unit::TestCase
@@ -88,14 +88,14 @@ class FtDollarTest < Test::Unit::TestCase
 
     #noisy
 
-    wfid = @engine.launch(pdef)
+    wfid = @dashboard.launch(pdef)
 
-    @engine.wait_for(wfid)
+    @dashboard.wait_for(wfid)
 
     assert_equal(
       "#<ArgumentError: 'ruby_eval_allowed' is set to false, cannot evaluate" +
       " >1 + 2< (http://ruote.rubyforge.org/dollar.html)>",
-      @engine.errors.first.message)
+      @dashboard.errors.first.message)
   end
 
   def test_r
@@ -108,7 +108,7 @@ class FtDollarTest < Test::Unit::TestCase
 
     #noisy
 
-    @engine.context['ruby_eval_allowed'] = true
+    @dashboard.context['ruby_eval_allowed'] = true
 
     assert_trace('>3<', pdef)
   end
@@ -118,6 +118,7 @@ class FtDollarTest < Test::Unit::TestCase
     pdef = Ruote.process_definition do
       sequence do
         set 'f:toto' => 'person'
+        echo "${r:wi['toto']}"
         echo "${r:wi.fields['toto']}"
         echo "${r:workitem.fields['toto']}"
       end
@@ -125,9 +126,9 @@ class FtDollarTest < Test::Unit::TestCase
 
     #noisy
 
-    @engine.context['ruby_eval_allowed'] = true
+    @dashboard.context['ruby_eval_allowed'] = true
 
-    assert_trace "person\nperson", pdef
+    assert_trace [ 'person' ] * 3, pdef
   end
 
   def test_r_and_d
@@ -141,7 +142,7 @@ class FtDollarTest < Test::Unit::TestCase
 
     #noisy
 
-    @engine.context['ruby_eval_allowed'] = true
+    @dashboard.context['ruby_eval_allowed'] = true
 
     assert_trace 'person', pdef
   end
@@ -170,9 +171,9 @@ class FtDollarTest < Test::Unit::TestCase
       end
     end
 
-    wfid = @engine.launch(pdef)
+    wfid = @dashboard.launch(pdef)
 
-    @engine.wait_for(wfid)
+    @dashboard.wait_for(wfid)
 
     assert_match /^0_0_0![^!]+!#{wfid}\n#{wfid}$/, @tracer.to_s
   end
@@ -186,7 +187,7 @@ class FtDollarTest < Test::Unit::TestCase
       end
     end
 
-    @engine.context['ruby_eval_allowed'] = true
+    @dashboard.context['ruby_eval_allowed'] = true
 
     #noisy
 
@@ -225,9 +226,9 @@ class FtDollarTest < Test::Unit::TestCase
 
     #noisy
 
-    wfid = @engine.launch(pdef)
+    wfid = @dashboard.launch(pdef)
 
-    r = @engine.wait_for(wfid)
+    r = @dashboard.wait_for(wfid)
 
     assert_equal(
       {
@@ -250,15 +251,15 @@ class FtDollarTest < Test::Unit::TestCase
       alpha :b => '$f:a'
     end
 
-    @engine.register_participant :alpha do |wi|
+    @dashboard.register_participant :alpha do |wi|
       wi.fields['parameters'] = wi.fields['params']
     end
 
     #noisy
 
-    wfid = @engine.launch(pdef)
+    wfid = @dashboard.launch(pdef)
 
-    r = @engine.wait_for(wfid)
+    r = @dashboard.wait_for(wfid)
 
     assert_equal(
       { 'b' => %w[ A B C ], 'ref' => 'alpha' },
@@ -276,11 +277,11 @@ class FtDollarTest < Test::Unit::TestCase
       echo 'c'
     end
 
-    wfid = @engine.launch(
+    wfid = @dashboard.launch(
       pdef,
       'a' => '0a')
 
-    @engine.wait_for(wfid)
+    @dashboard.wait_for(wfid)
 
     assert_equal "a0\na1\nc", @tracer.to_s
   end
@@ -295,10 +296,34 @@ class FtDollarTest < Test::Unit::TestCase
       echo 'a1', :if => '$a'
     end
 
-    wfid = @engine.launch(pdef)
-    @engine.wait_for(wfid)
+    wfid = @dashboard.launch(pdef)
+    @dashboard.wait_for(wfid)
 
     assert_equal "a0\na1", @tracer.to_s
+  end
+
+  def test_participant_params
+
+    #@dashboard.noisy = true
+
+    @dashboard.register :toto do |workitem, fexp|
+      workitem['a'] = fexp.compile_atts
+      workitem['p'] = workitem.params
+    end
+
+    pdef = Ruote.define do
+      toto "${a}", "${b}" => "${c}"
+    end
+
+    wfid = @dashboard.launch(pdef, 'a' => 'x', 'b' => 'y', 'c' => 'z')
+    r = @dashboard.wait_for(wfid)
+
+    assert_equal(
+      { 'y' => 'z', 'x' => nil, 'ref' => 'toto' },
+      r['workitem']['fields']['a'])
+    assert_equal(
+      { 'y' => 'z', 'x' => nil, 'ref' => 'toto' },
+      r['workitem']['fields']['p'])
   end
 end
 

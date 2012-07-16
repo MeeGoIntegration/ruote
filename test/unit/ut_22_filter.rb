@@ -5,7 +5,7 @@
 # Sun Jan 30 21:08:14 JST 2011
 #
 
-require File.join(File.dirname(__FILE__), '..', 'test_helper.rb')
+require File.expand_path('../../test_helper', __FILE__)
 
 require_json
 require 'rufus/json'
@@ -31,9 +31,12 @@ class UtFilterTest < Test::Unit::TestCase
   #
   # transformations
 
-  def assert_filter(result, filter, hash)
+  def assert_filter(result, filter, hash, double_tilde=nil)
 
-    assert_equal(result, Ruote.filter(Rufus::Json.dup(filter), hash))
+    assert_equal(
+      result,
+      Ruote.filter(
+        Rufus::Json.dup(filter), hash, :double_tilde => double_tilde))
   end
 
   def test_remove
@@ -428,6 +431,33 @@ class UtFilterTest < Test::Unit::TestCase
       { 'x' => %w[ a b c ] })
   end
 
+  def test_take
+
+    assert_filter(
+      { 'x' => 'a', 'z' => 'b' },
+      [ { 'field' => 'x', 'take' => 'true' } ],
+      { 'x' => 'a', 'y' => 'a' },
+      { 'z' => 'b' }) # ~~
+  end
+
+  def test_discard
+
+    assert_filter(
+      { 'y' => 'a', 'z' => 'b' },
+      [ { 'field' => 'x', 'discard' => 'true' } ],
+      { 'x' => 'a', 'y' => 'a' },
+      { 'z' => 'b' }) # ~~
+  end
+
+  def test_discard_multiple
+
+    assert_filter(
+      { 'z' => 'a', '1' => 'b' },
+      [ { 'field' => 'x|y', 'discard' => 'true' } ],
+      { 'x' => 'a', 'y' => 'a', 'z' => 'a' },
+      { '1' => 'b' }) # ~~
+  end
+
   #
   # validations
 
@@ -684,6 +714,26 @@ class UtFilterTest < Test::Unit::TestCase
       { 'x' => 2.0 })
   end
 
+  def test_is
+
+    assert_valid(
+      [ { 'field' => 'x', 'is' => true } ],
+      { 'x' => true })
+    assert_valid(
+      [ { 'field' => 'x', 'is' => (1..3).to_a } ],
+      { 'x' => [ 1, 2, 3 ] })
+
+    assert_not_valid(
+      [ { 'field' => 'x', 'is' => false } ],
+      { 'x' => true })
+    assert_not_valid(
+      [ { 'field' => 'x', 'is' => true } ],
+      { 'x' => 1 })
+    assert_not_valid(
+      [ { 'field' => 'x', 'is' => (1..3).to_a } ],
+      { 'x' => [ 3, 2, 1 ] })
+  end
+
   def test_size
 
     assert_valid(
@@ -795,6 +845,9 @@ class UtFilterTest < Test::Unit::TestCase
     assert_valid(
       [ { 'field' => 'x', 'in' => "alpha, bravo" } ],
       { 'x' => 'alpha' })
+    assert_valid(
+      [ { 'field' => 'x', 'in' => [ true ] } ],
+      { 'x' => true })
 
     assert_not_valid(
       [ { 'field' => 'x', 'in' => %w[ alpha bravo ] } ],
@@ -802,6 +855,9 @@ class UtFilterTest < Test::Unit::TestCase
     assert_not_valid(
       [ { 'field' => 'x', 'in' => "alpha, bravo" } ],
       { 'x' => 'charly' })
+    assert_not_valid(
+      [ { 'field' => 'x', 'in' => [ false ] } ],
+      { 'x' => true })
   end
 
   def test_has__keys
@@ -854,6 +910,31 @@ class UtFilterTest < Test::Unit::TestCase
     assert_not_valid(
       [ { 'field' => 'x', 'has' => %w[ a d ] } ],
       { 'x' => %w[ a b c ] })
+  end
+
+  def test_includes
+
+    assert_valid(
+      [ { 'field' => 'x', 'includes' => 'a' } ],
+      { 'x' => %w[ a b c ] })
+
+    assert_not_valid(
+      [ { 'field' => 'x', 'includes' => 'z' } ],
+      { 'x' => %w[ a b c ] })
+    assert_not_valid(
+      [ { 'field' => 'x', 'includes' => 'z' } ],
+      { 'x' => 'abcz' })
+  end
+
+  def test_includes__value
+
+    assert_valid(
+      [ { 'field' => 'x', 'includes' => 1 } ],
+      { 'x' => { 'a' => 1 } })
+
+    assert_not_valid(
+      [ { 'field' => 'x', 'includes' => '1' } ],
+      { 'x' => { 'a' => 1 } })
   end
 
   def test_valid

@@ -1,5 +1,5 @@
 #--
-# Copyright (c) 2005-2011, John Mettraux, jmettraux@gmail.com
+# Copyright (c) 2005-2012, John Mettraux, jmettraux@gmail.com
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -64,6 +64,43 @@ module Ruote::Exp
   # rewind/break/jump/... like 'iterator' does, since it fires all its
   # branches when applied.
   #
+  # == :on and arrays
+  #
+  # Given a workitem field named 'x' containing the array value
+  # [ 'a', 'b', 'c' ] and a workitem field 'y' containing the string 'a, b, c',
+  # this:
+  #
+  #   concurrent_iterator :on_field => 'x', :to_f => 'xx' do
+  #     # ...
+  #   end
+  #
+  # is equivalent to
+  #
+  #   concurrent_iterator :on => '$f:x', :to_f => 'xx' do
+  #     # ...
+  #   end
+  #
+  # is equivalent to
+  #
+  #   concurrent_iterator :on => '${f:y}', :to_f => 'xx' do
+  #     # ...
+  #   end
+  #
+  # == :to_field and :to_f, :to_var and :to_v, :to
+  #
+  # Those 4 lines are equivalent:
+  #
+  #     concurrent_iterator :on => [ 'ceo', 'cto' ], :to_field => 'a' do ...
+  #     concurrent_iterator :on => [ 'ceo', 'cto' ], :to_f => 'a' do ...
+  #     concurrent_iterator :on => [ 'ceo', 'cto' ], :to => 'f:a' do ...
+  #     concurrent_iterator :on => [ 'ceo', 'cto' ], :to => 'a' do ...
+  #
+  # Those 3 lines are equivalent:
+  #
+  #     concurrent_iterator :on => [ 'ceo', 'cto' ], :to_var => 'a' do ...
+  #     concurrent_iterator :on => [ 'ceo', 'cto' ], :to_v => 'a' do ...
+  #     concurrent_iterator :on => [ 'ceo', 'cto' ], :to => 'v:a' do ...
+  #
   # == :times and :branches
   #
   # Similarly to the iterator expression, the :times or the :branches attribute
@@ -84,6 +121,28 @@ module Ruote::Exp
   #       participant 'user2'
   #     end
   #   end
+  #
+  #
+  # == ruote 2.3.0 and the citerator children
+  #
+  # Prior to ruote 2.3.0, the concurrent-iterator only considered one child
+  # expression:
+  #
+  #   concurrent_iterator :times => 3 do
+  #     participant 'al'
+  #     participant 'bob' # 'bob' would never be reached
+  #   end
+  #
+  # So one had to write:
+  #
+  #   concurrent_iterator :times => 3 do
+  #     sequence do
+  #       participant 'al'
+  #       participant 'bob' # 'bob' would never be reached
+  #     end
+  #   end
+  #
+  # Ruote 2.3.0 lifts that restriction.
   #
   #
   # == options
@@ -153,7 +212,6 @@ module Ruote::Exp
         h.list_size += 1
 
         workitem = Ruote.fulldup(h.applied_workitem)
-        #workitem = Rufus::Json.dup(h.applied_workitem)
 
         variables = { 'ii' => h.list_size - 1 }
 
@@ -163,11 +221,14 @@ module Ruote::Exp
           workitem['fields'][h.to_f] = val
         end
 
+        expid, subtree = if tree_children.size > 1
+          [ h.fei['expid'], [ 'sequence', {}, tree_children ] ]
+        else
+          [ "#{h.fei['expid']}_0", tree_children[0] ]
+        end
+
         launch_sub(
-          "#{h.fei['expid']}_0",
-          tree_children[0],
-          :workitem => workitem,
-          :variables => variables)
+          expid, subtree, :workitem => workitem, :variables => variables)
       end
     end
 
@@ -199,7 +260,7 @@ module Ruote::Exp
       return reply_to_parent(h.applied_workitem) if list.empty?
 
       h.to_v, h.to_f = determine_tos
-      h.to_v = 'i' if h.to_v.nil? && h.to_f.nil?
+      h.to_v = 'i' unless h.to_v or h.to_f
 
       h.list_size = 0
 
@@ -210,9 +271,9 @@ module Ruote::Exp
 
     # Overrides the implementation found in ConcurrenceExpression
     #
-    def expected_count
+    def count_list_size
 
-      h.ccount ? [ h.ccount, h.list_size ].min : h.list_size
+      h.list_size
     end
   end
 end

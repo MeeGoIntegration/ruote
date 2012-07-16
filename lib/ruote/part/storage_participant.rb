@@ -1,5 +1,5 @@
 #--
-# Copyright (c) 2005-2011, John Mettraux, jmettraux@gmail.com
+# Copyright (c) 2005-2012, John Mettraux, jmettraux@gmail.com
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -77,7 +77,7 @@ module Ruote
     # This is the method called by ruote when passing a workitem to
     # this participant.
     #
-    def consume(workitem)
+    def on_workitem
 
       doc = workitem.to_h
 
@@ -92,21 +92,33 @@ module Ruote
       @context.storage.put(doc)
     end
 
-    # Though #update is an alias to #consume, it is meant to be used by
-    # client code when "saving" a workitem (fields may have changed). Calling
-    # update won't proceed the workitem.
+    # Used by client code when "saving" a workitem (fields may have changed).
+    # Calling #update won't proceed the workitem.
     #
-    alias update consume
+    # Returns nil in case of success, true if the workitem is already gone and
+    # the newer version of the workitem if the workitem changed in the mean
+    # time.
+    #
+    def update(workitem)
 
-    # Removes the document/workitem from the storage
+      r = @context.storage.put(workitem.h)
+
+      r.is_a?(Hash) ? Ruote::Workitem.new(r) : r
+    end
+
+    # Removes the document/workitem from the storage.
     #
-    def cancel(fei, flavour)
+    # Warning: this method is called by the engine (worker), i.e. not by you.
+    #
+    def on_cancel
 
       doc = fetch(fei)
 
+      return unless doc
+
       r = @context.storage.delete(doc)
 
-      cancel(fei, flavour) if r != nil
+      on_cancel(fei, flavour) if r != nil
     end
 
     # Given a fei (or its string version, a sid), returns the corresponding
@@ -123,21 +135,29 @@ module Ruote
 
     # Removes the workitem from the storage and replies to the engine.
     #
-    # TODO : should it raise if the workitem can't be found ?
-    # TODO : should it accept just the fei ?
-    #
     def proceed(workitem)
 
-      doc = fetch(Ruote::FlowExpressionId.extract_h(workitem))
+      r = remove_workitem('proceed', workitem)
 
-      r = @context.storage.delete(doc)
-
-      raise ArgumentError.new('cannot proceed, workitem is gone') if r == true
       return proceed(workitem) if r != nil
 
       workitem.h.delete('_rev')
 
       reply_to_engine(workitem)
+    end
+
+    # Removes the workitem and hands it back to the flow with an error to
+    # raise for the participant expression that emitted the workitem.
+    #
+    def flunk(workitem, err_class_or_instance, *err_arguments)
+
+      r = remove_workitem('reject', workitem)
+
+      return flunk(workitem) if r != nil
+
+      workitem.h.delete('_rev')
+
+      super(workitem, err_class_or_instance, *err_arguments)
     end
 
     # (soon to be removed)
@@ -203,7 +223,7 @@ module Ruote
         'workitems', participant_name, opts
       ) if @context.storage.respond_to?(:by_participant)
 
-      select(opts) do |hwi|
+      do_select(opts) do |hwi|
         hwi['participant_name'] == participant_name
       end
     end
@@ -225,7 +245,7 @@ module Ruote
         return @context.storage.by_field('workitems', field, value, opts)
       end
 
-      select(opts) do |hwi|
+      do_select(opts) do |hwi|
         hwi['fields'].keys.include?(field) &&
         (value.nil? || hwi['fields'][field] == value)
       end
@@ -252,7 +272,7 @@ module Ruote
     #
     def query(criteria)
 
-      cr = criteria.inject({}) { |h, (k, v)| h[k.to_s] = v; h }
+      cr = Ruote.keys_to_s(criteria)
 
       if @context.storage.respond_to?(:query_workitems)
         return @context.storage.query_workitems(cr)
@@ -309,7 +329,7 @@ module Ruote
     #
     def per_participant
 
-      inject({}) { |h, wi| (h[wi.participant_name] ||= []) << wi; h }
+      each_with_object({}) { |wi, h| (h[wi.participant_name] ||= []) << wi }
     end
 
     # Mostly a test method. Returns a Hash were keys are participant names
@@ -318,16 +338,87 @@ module Ruote
     #
     def per_participant_count
 
-      per_participant.inject({}) { |h, (k, v)| h[k] = v.size; h }
+      per_participant.remap { |(k, v), h| h[k] = v.size }
+    end
+
+    # Claims a workitem. Returns the [updated] workitem if successful.
+    #
+    # Returns nil if the workitem is already reserved.
+    #
+    # Fails if the workitem can't be found, is gone, or got modified
+    # elsewhere.
+    #
+    # Here is a mini-diagram explaining the reserve/delegate/proceed flow:
+    #
+    #    in    delegate(nil)    delegate(other)
+    #    |    +---------------+ +------+
+    #    v    v               | |      v
+    #   +-------+  reserve   +----------+  proceed
+    #   | ready | ---------> | reserved | ---------> out
+    #   +-------+            +----------+
+    #
+    def reserve(workitem_or_fei, owner)
+
+      hwi = fetch(workitem_or_fei)
+
+      fail ArgumentError.new("workitem not found") if hwi.nil?
+
+      return nil if hwi['owner'] && hwi['owner'] != owner
+
+      hwi['owner'] = owner
+
+      r = @context.storage.put(hwi, :update_rev => true)
+
+      fail ArgumentError.new("workitem is gone") if r == true
+      fail ArgumentError.new("workitem got modified meanwhile") if r != nil
+
+      Workitem.new(hwi)
+    end
+
+    # Delegates a currently owned workitem to a new owner.
+    #
+    # Fails if the workitem can't be found, belongs to noone, or if the
+    # workitem passed as argument is out of date (got modified in the mean
+    # time).
+    #
+    # It's OK to delegate to nil, thus freeing the workitem.
+    #
+    # See #reserve for an an explanation of the reserve/delegate/proceed flow.
+    #
+    def delegate(workitem, new_owner)
+
+      hwi = fetch(workitem)
+
+      fail ArgumentError.new(
+        "workitem not found"
+      ) if hwi == nil
+
+      fail ArgumentError.new(
+        "cannot delegate, workitem doesn't belong to anyone"
+      ) if hwi['owner'] == nil
+
+      fail ArgumentError.new(
+        "cannot delegate, " +
+        "workitem owned by '#{hwi['owner']}', not '#{workitem.owner}'"
+      ) if hwi['owner'] != workitem.owner
+
+      hwi['owner'] = new_owner
+
+      r = @context.storage.put(hwi, :update_rev => true)
+
+      fail ArgumentError.new("workitem is gone") if r == true
+      fail ArgumentError.new("workitem got modified meanwhile") if r != nil
+
+      Workitem.new(hwi)
     end
 
     protected
 
     # Fetches a workitem in its raw form (Hash).
     #
-    def fetch(fei)
+    def fetch(workitem_or_fei)
 
-      hfei = Ruote::FlowExpressionId.extract_h(fei)
+      hfei = Ruote::FlowExpressionId.extract_h(workitem_or_fei)
 
       @context.storage.get('workitems', to_id(hfei))
     end
@@ -346,7 +437,7 @@ module Ruote
     # Given a few options and a block, returns all the workitems that match
     # the block
     #
-    def select(opts, &block)
+    def do_select(opts, &block)
 
       skip = opts[:offset] || opts[:skip]
       limit = opts[:limit]
@@ -386,6 +477,28 @@ module Ruote
       workitems_or_count.is_a?(Array) ?
         workitems_or_count.collect { |wi| Ruote::Workitem.new(wi) } :
         workitems_or_count
+    end
+
+    def remove_workitem(action, workitem)
+
+      hwi = fetch(workitem)
+
+      fail ArgumentError.new(
+        "cannot #{action}, workitem not found"
+      ) if hwi == nil
+
+      fail ArgumentError.new(
+        "cannot #{action}, " +
+        "workitem is owned by '#{hwi['owner']}', not '#{workitem.owner}'"
+      ) if hwi['owner'] && hwi['owner'] != workitem.owner
+
+      r = @context.storage.delete(hwi)
+
+      fail ArgumentError.new(
+        "cannot #{action}, workitem is gone"
+      ) if r == true
+
+      r
     end
   end
 end

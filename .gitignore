@@ -1,3 +1,8 @@
 ruote_rdoc/
 work/
 *.swp
+tags
+.bundle/
+.rspec
+Gemfile
+Gemfile.lock

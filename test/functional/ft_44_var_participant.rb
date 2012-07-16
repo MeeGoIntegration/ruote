@@ -5,7 +5,7 @@
 # Wed Jul 14 09:43:58 JST 2010
 #
 
-require File.join(File.dirname(__FILE__), 'base')
+require File.expand_path('../base', __FILE__)
 
 require 'ruote/participant'
 
@@ -24,12 +24,12 @@ class FtVarParticipantTest < Test::Unit::TestCase
 
     #noisy
 
-    wfid = @engine.launch(pdef)
+    wfid = @dashboard.launch(pdef)
 
-    @engine.wait_for(:alpha)
+    @dashboard.wait_for(:alpha)
 
-    assert_equal 1, @engine.storage_participant.size
-    assert_equal 'alpha', @engine.storage_participant.first.participant_name
+    assert_equal 1, @dashboard.storage_participant.size
+    assert_equal 'alpha', @dashboard.storage_participant.first.participant_name
   end
 end
 

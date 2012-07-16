@@ -1,5 +1,5 @@
 #--
-# Copyright (c) 2005-2011, John Mettraux, jmettraux@gmail.com
+# Copyright (c) 2005-2012, John Mettraux, jmettraux@gmail.com
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -63,7 +63,8 @@ module Ruote::Exp
 
       if tag && Ruote.is_a_fei?(tag)
 
-        @context.storage.put_msg('cancel', 'fei' => tag, 're_apply' => true)
+        @context.storage.put_msg(
+          'cancel', 'fei' => tag, 're_apply' => { 'workitem' => 'applied' })
 
         reply_to_parent(h.applied_workitem) unless ancestor?(tag)
 

@@ -5,7 +5,7 @@
 # Mon Sep 14 19:31:37 JST 2009
 #
 
-require File.join(File.dirname(__FILE__), 'base')
+require File.expand_path('../base', __FILE__)
 
 require 'ruote/participant'
 require 'ruote/part/template'
@@ -49,7 +49,7 @@ class FtPartTemplateTest < Test::Unit::TestCase
 
     #noisy
 
-    @engine.register_participant(
+    @dashboard.register_participant(
       :alpha,
       MyParticipant,
       :template => "0:${v:var0}\n1:${f:field0}")

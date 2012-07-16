@@ -1,5 +1,5 @@
 #--
-# Copyright (c) 2005-2011, John Mettraux, jmettraux@gmail.com
+# Copyright (c) 2005-2012, John Mettraux, jmettraux@gmail.com
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -69,6 +69,26 @@ module Ruote
     Ruote::FlowExpressionId.extract_h(o)
   end
 
+  # Given something, tries to return the fei (Ruote::FlowExpressionId) in it.
+  #
+  def self.extract_fei(o)
+
+    Ruote::FlowExpressionId.extract(o)
+  end
+
+  # Given an object, will return the wfid (workflow instance id) nested into
+  # it (or nil if it can't find or doesn't know how to find).
+  #
+  # The wfid is a String instance.
+  #
+  def self.extract_wfid(o)
+
+    return o.strip == '' ? nil : o if o.is_a?(String)
+    return o.wfid if o.respond_to?(:wfid)
+    return o['wfid'] || o.fetch('fei', {})['wfid'] if o.respond_to?(:[])
+    nil
+  end
+
   # This function is used to generate the subids. Each flow
   # expression receives such an id (it's useful for cursors, loops and
   # forgotten branches).
@@ -106,8 +126,10 @@ module Ruote
       @h = h
       class << h; include Ruote::HashDot; end
 
-      @h['subid'] = @h.delete('sub_wfid') if @h['sub_wfid']
-        # TODO : for 2.1.13, remove this
+      sub_wfid = @h.delete('sub_wfid')
+      @h['subid'] ||= sub_wfid
+        #
+        # TODO : for 2.2.2, remove those two lines
     end
 
     def expid; @h['expid']; end
@@ -121,8 +143,18 @@ module Ruote
 
       "#{@h['expid']}!#{@h['subid']}!#{@h['wfid']}"
     end
+
     alias sid to_storage_id
 
+    #   expid!subid[0, 5]!wfid
+    #
+    def short_sid
+
+      "#{@h['expid']}!#{@h['subid'][0, 5]}!#{@h['wfid']}"
+    end
+
+    #   wfid!!expid
+    #
     def to_sortable_id
 
       "#{@h['wfid']}!!#{@h['expid']}"
@@ -152,11 +184,22 @@ module Ruote
       h.expid.split(CHILD_SEP).last.to_i
     end
 
+    # Returns a rufus-mnemo version of the first 9 hexdigits in the subid.
+    #
+    def mnemo_id
+
+      Rufus::Mnemo.from_i(@h['subid'][0, 9].to_i(16))
+    end
+
+    # For proper hashing and sorting.
+    #
     def hash
 
       to_storage_id.hash
     end
 
+    # For proper hashing and sorting.
+    #
     def <=>(other)
 
       self.to_sortable_id <=> other.to_sortable_id

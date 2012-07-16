@@ -5,13 +5,14 @@
 # Mon Jun 15 16:43:06 JST 2009
 #
 
-require File.join(File.dirname(__FILE__), '..', 'test_helper.rb')
+
+require File.expand_path('../../test_helper', __FILE__)
+
+#require_json
+require 'rufus-json/automatic'
 
 require 'ruote/fei'
 require 'ruote/workitem'
-
-require_json
-require 'rufus/json'
 
 
 class UtWorkitemTest < Test::Unit::TestCase
@@ -46,6 +47,11 @@ class UtWorkitemTest < Test::Unit::TestCase
 
     w0.set_field('customer.address', [ 'Cornwall Square 10b', 'Singapore-La' ])
     assert_equal 'Cornwall Square 10b', w0.lookup('customer.address.0')
+
+    assert_equal 'Jeff', w0['customer.name']
+
+    w0['customer.address'] = [ 'hondouri', 'hiroshima' ]
+    assert_equal 'hiroshima', w0['customer.address.1']
   end
 
   #def test_indifferent_access
@@ -69,6 +75,14 @@ class UtWorkitemTest < Test::Unit::TestCase
     w0 = Ruote::Workitem.new('fei' => f0, 'fields' => { 'a' => 'A' })
 
     assert_equal '20101224-baba', w0.wfid
+  end
+
+  def test_command
+
+    wi = Ruote::Workitem.new(
+      'fei' => 'x', 'fields' => { '__command__' => %w[ jump shark ] })
+
+    assert_equal %w[ jump shark ], wi.command
   end
 
   WI = {

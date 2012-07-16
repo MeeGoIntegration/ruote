@@ -7,7 +7,7 @@
 # By David Goldhirsch
 #
 
-require File.join(File.dirname(__FILE__), 'base')
+require File.expand_path('../base', __FILE__)
 
 class FtPartBlockingTest < Test::Unit::TestCase
  include FunctionalBase
@@ -32,11 +32,11 @@ class FtPartBlockingTest < Test::Unit::TestCase
 
  def run_engine(options={})
 
-   @engine.context.stash[:first_time] = options[:first_time] || 0.0
-   @engine.context.stash[:second_time] = options[:second_time] || 0.0
+   @dashboard.context.stash[:first_time] = options[:first_time] || 0.0
+   @dashboard.context.stash[:second_time] = options[:second_time] || 0.0
 
-   if @engine.context.stash[:first_time] == @engine.context.stash[:second_time]
-     @engine.context.stash[:second_time] = @engine.context.stash[:first_time] + 0.1
+   if @dashboard.context.stash[:first_time] == @dashboard.context.stash[:second_time]
+     @dashboard.context.stash[:second_time] = @dashboard.context.stash[:first_time] + 0.1
    end
 
    pdef = Ruote.process_definition :name => 'simple' do
@@ -49,22 +49,22 @@ class FtPartBlockingTest < Test::Unit::TestCase
      end
    end
 
-   @engine.register_participant :first do |wi|
+   @dashboard.register_participant :first do |wi|
      sleep stash[:first_time]
      wi.fields['result'] = 'first'
    end
 
-   @engine.register_participant :second do |wi|
+   @dashboard.register_participant :second do |wi|
      sleep stash[:second_time]
      wi.fields['result'] = 'second'
    end
 
-   @engine.register_participant :trace do |wi|
-     @tracer << "#{wi.fields['result']}"
+   @dashboard.register_participant :trace do |wi|
+     tracer << "#{wi.fields['result']}"
    end
 
-   wfid = @engine.launch(pdef)
-   @engine.wait_for(wfid)
+   wfid = @dashboard.launch(pdef)
+   @dashboard.wait_for(wfid)
 
    wfid
  end

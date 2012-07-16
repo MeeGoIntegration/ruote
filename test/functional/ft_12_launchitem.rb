@@ -5,7 +5,7 @@
 # Tue Jun 23 10:55:16 JST 2009
 #
 
-require File.join(File.dirname(__FILE__), 'base')
+require File.expand_path('../base', __FILE__)
 
 
 class FtLaunchitemTest < Test::Unit::TestCase
@@ -17,27 +17,27 @@ class FtLaunchitemTest < Test::Unit::TestCase
       alpha
     end
 
-    @engine.register_participant :alpha do |workitem|
+    @dashboard.register_participant :alpha do |workitem|
       stash[:fields] = workitem.fields
-      @tracer << 'a'
+      tracer << 'a'
       nil
     end
 
     #noisy
 
-    wfid = @engine.launch(pdef, 'a' => 0, 'b' => 1)
+    wfid = @dashboard.launch(pdef, 'a' => 0, 'b' => 1)
     wait_for(wfid)
 
     assert_equal('a', @tracer.to_s)
 
-    @engine.context.stash[:fields].delete('__result__')
+    @dashboard.context.stash[:fields].delete('__result__')
 
     assert_not_nil(
-      @engine.context.stash[:fields].delete('dispatched_at'))
+      @dashboard.context.stash[:fields].delete('dispatched_at'))
 
     assert_equal(
       {"a"=>0, "b"=>1, "params"=>{"ref"=>"alpha"}},
-      @engine.context.stash[:fields])
+      @dashboard.context.stash[:fields])
   end
 end
 

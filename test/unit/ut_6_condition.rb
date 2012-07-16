@@ -5,7 +5,7 @@
 # Sun Jun 14 17:30:43 JST 2009
 #
 
-require File.join(File.dirname(__FILE__), '..', 'test_helper.rb')
+require File.expand_path('../../test_helper', __FILE__)
 
 require 'ruote/svc/treechecker'
 require 'ruote/svc/expression_map'
@@ -23,14 +23,24 @@ class ConditionTest < Test::Unit::TestCase
     end
   end
 
-  def assert_not_skip(result, h)
+  def assert_apply(h)
 
-    fe = FakeExpression.new(h)
+    e = FakeExpression.new(h)
+    a = [ e.attribute(:if), e.attribute(:unless) ]
 
-    sif = fe.attribute(:if)
-    sunless = fe.attribute(:unless)
+    assert(
+      Ruote::Exp::Condition.apply?(*a),
+      "exp #{h.inspect} was meant to be applied (#{a.inspect})")
+  end
 
-    assert_equal result, Ruote::Exp::Condition.apply?(sif, sunless)
+  def assert_skip(h)
+
+    e = FakeExpression.new(h)
+    a = [ e.attribute(:if), e.attribute(:unless) ]
+
+    assert(
+      ! Ruote::Exp::Condition.apply?(*a),
+      "exp #{h.inspect} was meant to be skipped (#{a.inspect})")
   end
 
   def assert_b(b, conditional=nil)
@@ -56,37 +66,40 @@ class ConditionTest < Test::Unit::TestCase
 
   def test_if
 
-    assert_not_skip false, :if => 'true == false'
-    assert_not_skip false, :if => "'true' == 'false'"
-    assert_not_skip false, :if => '"true" == "false"'
+    assert_skip :if => 'true == false'
+    assert_skip :if => "'true' == 'false'"
+    assert_skip :if => '"true" == "false"'
 
-    assert_not_skip true, :if => 'a == a'
-    assert_not_skip true, :if => '"a" == "a"'
+    assert_skip :if => ''
+    assert_skip :if => ' '
 
-    assert_not_skip true, :if => 'blah blah blah'
+    assert_apply :if => 'a == a'
+    assert_apply :if => '"a" == "a"'
+
+    assert_apply :if => 'blah blah blah'
   end
 
   def test_unless
 
-    assert_not_skip true, :unless => 'true == false'
-    assert_not_skip false, :unless => 'false == false'
+    assert_apply :unless => 'true == false'
+    assert_skip :unless => 'false == false'
   end
 
   def test_set
 
-    assert_not_skip true, :if => 'true set'
-    assert_not_skip true, :if => "'true' set"
-    assert_not_skip true, :if => '"true" set'
+    assert_apply :if => 'true set'
+    assert_apply :if => "'true' set"
+    assert_apply :if => '"true" set'
 
-    assert_not_skip true, :if => 'true is set'
-    assert_not_skip true, :if => '"true" is set'
-    assert_not_skip true, :if => "'true' is set"
-    assert_not_skip false, :if => 'true is not set'
+    assert_apply :if => 'true is set'
+    assert_apply :if => '"true" is set'
+    assert_apply :if => "'true' is set"
+    assert_skip :if => 'true is not set'
   end
 
   def test_illegal_code
 
-    assert_not_skip true, :if => 'exit'
+    assert_apply :if => 'exit'
   end
 
   def test_true
@@ -134,12 +147,12 @@ class ConditionTest < Test::Unit::TestCase
 
   def test_strip
 
-    assert_not_skip true, :if => 'a == a '
-    assert_not_skip true, :if => ' a == a '
-    assert_not_skip true, :if => ' a == a'
-    assert_not_skip true, :if => 'a ==  a'
-    assert_not_skip true, :if => 'a  == a'
-    assert_not_skip true, :if => 'a==a'
+    assert_apply :if => 'a == a '
+    assert_apply :if => ' a == a '
+    assert_apply :if => ' a == a'
+    assert_apply :if => 'a ==  a'
+    assert_apply :if => 'a  == a'
+    assert_apply :if => 'a==a'
   end
 
   def test_boolean_literals
@@ -207,6 +220,8 @@ class ConditionTest < Test::Unit::TestCase
     assert_e 'Loan', 'Loan'
     assert_e 'Loan/Grant', 'Loan/Grant'
     assert_e 'Loan/Grant', 'Loan / Grant'
+
+    assert_e 'redo', '"redo"'
   end
 
   def test_something_or_not
@@ -276,6 +291,9 @@ class ConditionTest < Test::Unit::TestCase
 
     assert_b false, "3 in [1, 2]"
     assert_b false, "2 in {1 => 2}"
+
+    assert_b "a in [a, b]"
+    assert_b "'a' in [a, b]"
   end
 
   def test_not_in
@@ -293,9 +311,10 @@ class ConditionTest < Test::Unit::TestCase
     assert_b false, "1 in {x}"
   end
 
-  def test_comparators
+  def test_matching
 
     assert_b "alpha =~ /^a/"
+    assert_b "'alpha toto' =~ /^a/"
     assert_b false, "alpha =~ /^b/"
   end
 end

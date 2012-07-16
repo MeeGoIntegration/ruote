@@ -5,7 +5,7 @@
 # Tue May 12 15:31:26 JST 2009
 #
 
-require File.join(File.dirname(__FILE__), '..', 'test_helper.rb')
+require File.expand_path('../../test_helper', __FILE__)
 
 require 'ruote/reader'
 
@@ -215,8 +215,8 @@ class UtRubyReaderTest < Test::Unit::TestCase
     assert_equal(
       [ 'define', {}, [
         [ 'set', { 'v:v' => "lambda { |wi| p wi }\n" }, [] ],
-        [ 'set', { 'v:v' => "proc { |wi| p(wi) }\n" }, [] ],
-        [ 'set', { 'v:v' => { 'on_workitem' => "proc { |wi| p(wi) }\n" } }, [] ] ] ],
+        [ 'set', { 'v:v' => "proc { |wi| p wi }\n" }, [] ],
+        [ 'set', { 'v:v' => { 'on_workitem' => "proc { |wi| p wi }\n" } }, [] ] ] ],
       tree)
   end
 end

@@ -2,8 +2,121 @@
 = ruote - CHANGELOG.txt
 
 
-== ruote - 2.2.1    not yet released
+== ruote - 2.3.0    not yet released
 
+- StorageBase#dump: go with YAML
+- on_error: !immediate
+- "kill" expression (undo/cancel alias)
+- ${tags}, ${tag} and ${full_tag}
+- StorageParticipant#flunk(workitem, err, *err_args)
+- ReceiverMixin#flunk(workitem, err, *err_args)
+- workitem: sub_wf_name and sub_wf_revision
+- new 'raise' msg for passing back errors to worker
+- participant#on_apply
+- push/pop specialized aliases for inc/dec
+- inc/dec: 'v:x' => 2 shortcut
+- inc/dec: drop default 'v:d' and accept nested {in|de}crement
+- 'participant_in_variable_enabled' switch
+- make re_apply use the applied workitem by default
+- ${mnemo_id} (along with ${expid} and ${subid})
+- Dashboard#remove_process (idea Claudio Petasecca Donati)
+- re_dispatch bug fix (patch by Doug Bryant)
+- Ruote.extract_wfid(o)
+- on_error/on_timeout: cancel/cando
+- Worker#handle_step_error(e, msg) enhancements
+- cancel "flavour" rebound
+- Dashboard#logger shortcut
+- :on_error => 'raise'
+- :over_if bug fix (reported by Alex Wang)
+- :merge_type => 'deep' (idea Jim MarsBomber Li)
+- Dashboard#launch accepts :wfid "field", custom wfid
+- kill_process expression (and on_error)
+- the "second take" (__on_error__, __on_cancel__)
+- Ruote.tree(&block) alias to Ruote.to_tree(&block)
+- added 'tree' entry to error doc and error msg
+- error handler $f:__error__: added 'tree' entry
+- Ruote::Reader.to_expid_radial
+- wfid_generator: dropping the @last['raw'] concept
+- wait_for(:x, :or_error) (thanks John Roberts)
+- concurrence over_if bug (thanks alexw668)
+- concurrence and citerator :remaining => 'wait' (idea Pedro Visintin)
+- set 'v:x' => 'y', :over[ride] => true/'sub'
+- concurrence and citerator :count => -x (all but x)
+- "await" expression, successor to "listen"
+- root expression: __past_tags__ variable
+- full tags
+- concurrence and citerator: :count => 0 (immediate reply)
+- iterator and concurrent-iterator: implicit sequence
+- iterator: stopped creating new variable scope
+- :vars_to_f common attribute
+- :scope => true forces a new variable scope
+- subprocess 'field:x' => 'y' (variables and now fields)
+- Dashboard#worklist (alias for Dashboard#storage_participant)
+- set: now accepting children (and behaving like a sequence)
+- [un]set: setting __result__
+- concurrence :wait_for => 'alpha, bravo' (idea Raphael Simon)
+- BlockParticipant: nicer multi blocks
+- Dashboard #cancel and #kill now accept options
+- StorageParticipant #reserve and #delegate
+- 'terminated/ceased' msg: include root exp variables
+- Dashboard#worker_state[=] (running/paused/stopped)
+- define :on_terminate => :regenerate
+- :on_error => '5m: retry * 3, 10m: retry'
+- :on_error => '5m: retry, 2m: retry, pass'
+- dsub for attribute keys as well
+- conf option: 'worker_info_enabled' (defaults to true, enabled)
+- Dashboard#register saves list in one batch (unless :clear => true)
+- DefaultHistory include Enumerable
+- Dashboard#wait_for(action_name) (dispatch, cancel, reply, ...)
+- merged TestLogger into WaitLogger
+- :take and :discard common attributes
+- filter: 'take' and 'discard'
+- Participant: on_cancel -> false prevents on_cancel reply
+- LocalParticipant #is_gone? #is_cancel[l]ed?
+- Dashboard#worker_info
+- msg: put_doc, low-level action
+- participant: #rtimers, #rtimeout and #timers
+- lose and forget expressions: aligned 'multi' behaviour
+- concurrence and citerator: :merge_type => 'ignore'
+- :timers error, redo/retry, undo/pass and commands
+- :timers common attribute
+- :flank common attribute
+- Storage#done(worker, msg) optional method
+- get_many :batch option (used by some storages for optimization)
+- 'stall' expression (mostly for testing)
+- context and worker : subscription reworked
+- worker : 'restless_worker' option
+- Ruote::Dashboard (will slowly phase Ruote::Engine out)
+- :on_timeout => 'rewind', :on_timeout => 'jump to alpha'
+- :on_error => 'rewind', :on_error => 'jump to alpha'
+- dispatch_pool and context['participant_threads_enabled']
+- participant params.__children__
+- on_error expression
+- concurrence :merge_type => 'concat' (vs 'union') (Thanks Julien France)
+- Workitem#re_dispatch_count
+- Engine#launch(pdef, fields, vars, root_stash)
+- Workitem #[] amd #[]= (#lookup and #set_field shortcuts)
+- LocalParticipant#lookup_variable(key)
+- LocalParticipant / Receiver : stash_get / stash_put
+- LocalParticipant implicit participant_name
+- LocalParticipant implicit workitem, fei, flavour and fexp
+- Participant #on_workitem, #dont_thread?, etc
+- FlowExpression #root and #root_id
+- dollar substitution in expression name as well
+- Engine#replay_at_error(err_or_fei_or_wi)
+- Engine#error(wi_or_fei)
+- storages : #replace_engine_configuration(opts)
+- FsStorage : saving newer configuration (Thanks Nicholas Faiz)
+- ProcessStatus context : linking expression <-> error
+- ProcessStatus#root_workitem
+- ProcessStatus#leaves
+- filter 'includes' and 'is' (Thanks Nando Sola)
+- trailing fields (a Simone Carletti idea)
+- concurrence vs history issue fixed (Thanks Juris Galang)
+- unset and fields : made sure the field is removed (Thanks jpgilman)
+- sourcify, using to_raw_source from now on
+- filter expression and blocks
+- set 'v:display' => 'echo', aliasing of expressions
 - Reader.read(s) : better error raised when failed to 'parse'
 - :on_field => 'my.nested.field' now possible
 - [concurrent-]iterator :to => 'v:x' / 'f:y' / 'y'

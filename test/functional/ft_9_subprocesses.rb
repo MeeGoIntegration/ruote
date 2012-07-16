@@ -5,7 +5,7 @@
 # Wed Jun 10 17:41:23 JST 2009
 #
 
-require File.join(File.dirname(__FILE__), 'base')
+require File.expand_path('../base', __FILE__)
 
 require 'ruote/participant'
 
@@ -26,15 +26,15 @@ class FtSubprocessesTest < Test::Unit::TestCase
       end
     end
 
-    bravo = @engine.register_participant :bravo, Ruote::StorageParticipant
+    bravo = @dashboard.register_participant :bravo, Ruote::StorageParticipant
 
     #noisy
 
-    wfid = @engine.launch(pdef)
+    wfid = @dashboard.launch(pdef)
     wait_for(:bravo)
 
     fexp = Ruote::Exp::FlowExpression.fetch(
-      @engine.context, bravo.first.fei.to_h)
+      @dashboard.context, bravo.first.fei.to_h)
 
     assert_equal(
       [ '0_0',
@@ -45,7 +45,7 @@ class FtSubprocessesTest < Test::Unit::TestCase
     wait_for(:bravo)
 
     fexp = Ruote::Exp::FlowExpression.fetch(
-      @engine.context, bravo.first.fei.to_h)
+      @dashboard.context, bravo.first.fei.to_h)
 
     assert_equal(
       ['define', {'sub0'=>nil}, [['bravo', {}, []], ['echo', {'result : ${v:nada}'=>nil}, []]]],
@@ -70,22 +70,22 @@ class FtSubprocessesTest < Test::Unit::TestCase
       end
     end
 
-    @engine.context.stash[:wfids] = []
+    @dashboard.context.stash[:wfids] = []
 
-    @engine.register_participant :alpha do |workitem|
+    @dashboard.register_participant :alpha do |workitem|
       stash[:wfids] << workitem.fei.subid
     end
 
     #noisy
 
-    wfid = @engine.launch(pdef)
+    wfid = @dashboard.launch(pdef)
 
     wait_for(:alpha)
     wait_for(:alpha)
     wait_for(6)
 
-    assert_equal 2, @engine.context.stash[:wfids].size
-    assert_equal 2, @engine.context.stash[:wfids].sort.uniq.size
+    assert_equal 2, @dashboard.context.stash[:wfids].size
+    assert_equal 2, @dashboard.context.stash[:wfids].sort.uniq.size
   end
 
   def test_cancel_and_subprocess
@@ -99,15 +99,17 @@ class FtSubprocessesTest < Test::Unit::TestCase
       end
     end
 
-    alpha = @engine.register_participant :alpha, Ruote::StorageParticipant
+    alpha = @dashboard.register_participant :alpha, Ruote::StorageParticipant
 
-    wfid = @engine.launch(pdef)
+    #@dashboard.noisy = true
+
+    wfid = @dashboard.launch(pdef)
 
     wait_for(:alpha)
 
     assert_equal 1, alpha.size
 
-    @engine.cancel_process(wfid)
+    @dashboard.cancel_process(wfid)
 
     wait_for(wfid)
 
@@ -122,25 +124,53 @@ class FtSubprocessesTest < Test::Unit::TestCase
       end
     end
 
-    @engine.variables['sub0'] = Ruote.process_definition do
+    @dashboard.variables['sub0'] = Ruote.process_definition do
       alpha
     end
 
-    alpha = @engine.register_participant :alpha, Ruote::StorageParticipant
+    alpha = @dashboard.register_participant :alpha, Ruote::StorageParticipant
 
     #noisy
 
-    wfid = @engine.launch(pdef)
+    wfid = @dashboard.launch(pdef)
 
     wait_for(:alpha)
 
     assert_equal 1, alpha.size
 
-    @engine.cancel_process(wfid)
+    @dashboard.cancel_process(wfid)
 
     wait_for(wfid)
 
     assert_equal 0, alpha.size
+  end
+
+  # testing noisy and process definition output...
+  #
+  def test_sub_subprocess
+
+    pdef = Ruote.process_definition do
+      sequence do
+        sub0
+      end
+      define 'sub0' do
+        echo 'a'
+        sub1
+        define 'sub1' do
+          echo 'b'
+        end
+      end
+    end
+
+    alpha = @dashboard.register_participant :alpha, Ruote::StorageParticipant
+
+    #@dashboard.noisy = true
+
+    wfid = @dashboard.launch(pdef)
+    r = @dashboard.wait_for(wfid)
+
+    assert_equal 'terminated', r['action']
+    assert_equal %w[ a b ], @tracer.to_a
   end
 end
 

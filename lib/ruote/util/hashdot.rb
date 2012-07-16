@@ -1,5 +1,5 @@
 #--
-# Copyright (c) 2005-2011, John Mettraux, jmettraux@gmail.com
+# Copyright (c) 2005-2012, John Mettraux, jmettraux@gmail.com
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -32,14 +32,14 @@ module Ruote
       m = m.to_s
 
       if m[-1, 1] == '='
-
-        val = args.first
-        self[m[0..-2]] = val
-
-        return val
+        if args.first.nil?
+          self.delete(m[0..-2]); nil
+        else
+          self[m[0..-2]] = args.first
+        end
+      else
+        self[m]
       end
-
-      self[m]
     end
 
     def dump

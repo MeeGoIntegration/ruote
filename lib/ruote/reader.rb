@@ -1,5 +1,5 @@
 #--
-# Copyright (c) 2005-2011, John Mettraux, jmettraux@gmail.com
+# Copyright (c) 2005-2012, John Mettraux, jmettraux@gmail.com
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -22,7 +22,6 @@
 # Made in Japan.
 #++
 
-
 require 'uri'
 require 'open-uri'
 require 'rufus/json'
@@ -30,6 +29,7 @@ require 'ruote/reader/xml'
 require 'ruote/reader/json'
 require 'ruote/reader/radial'
 require 'ruote/reader/ruby_dsl' # just making sure it's loaded
+require 'ruote/util/mpatch'
 require 'ruote/util/subprocess'
 
 
@@ -51,6 +51,7 @@ module Ruote
       attr_reader :ruby, :radial, :xml, :json
 
       def initialize(definition)
+        super('cannot read process definition')
         @definition = definition
       end
 
@@ -64,13 +65,6 @@ module Ruote
       #
       def cause
         @ruby || @radial || @xml || @json
-      end
-
-      def inspect
-        s = "#<#{self.class}: "
-        [ @ruby, @radial, @xml, @json ].each { |e| s << e.inspect; s << ' ' }
-        s << '>'
-        s
       end
     end
 
@@ -92,9 +86,12 @@ module Ruote
 
       if is_uri?(definition)
 
-        raise ArgumentError.new(
-          "remote process definitions are not allowed"
-        ) if Ruote::Reader.remote?(definition) && @context['remote_definition_allowed'] != true
+        if
+          Ruote::Reader.remote?(definition) &&
+          @context['remote_definition_allowed'] != true
+        then
+          raise ArgumentError.new('remote process definitions are not allowed')
+        end
 
         return read(open(definition).read)
       end
@@ -144,30 +141,55 @@ module Ruote
     #
     def self.to_xml(tree, options={})
 
-      require 'builder'
+      s = StringIO.new
+      s.puts('<?xml version="1.0" encoding="UTF-8"?>')
 
-      # TODO : deal with "participant 'toto'"
+      _to_xml(tree, options[:indent], 0, s)
 
-      builder(options) do |xml|
+      s.string
+    end
 
-        atts = tree[1].dup
+    # Not as good as the builder gem, but at least doesn't come bundled with
+    # lib/blankslate.rb
+    #
+    def self._to_xml(tree, indent, level, s) # :nodoc:
 
-        t = atts.find { |k, v| v == nil }
-        if t
-          atts.delete(t.first)
-          key = tree[0] == 'if' ? 'test' : 'ref'
-          atts[key] = t.first
-        end
+      atts = tree[1].dup
 
-        atts = atts.inject({}) { |h, (k, v)| h[k.to_s.gsub(/\_/, '-')] = v; h }
+      if t = atts.find { |k, v| v == nil }
+        atts.delete(t.first)
+        atts[tree[0] == 'if' ? 'test' : 'ref'] = t.first
+      end
 
-        if tree[2].empty?
-          xml.tag!(tree[0], atts)
-        else
-          xml.tag!(tree[0], atts) do
-            tree[2].each { |child| to_xml(child, options) }
-          end
-        end
+      atts = atts.remap { |(k, v), h| h[k.to_s.gsub(/\_/, '-')] = v }
+      atts = atts.to_a.sort_by { |k, v| k }
+
+      s.print ' ' * level
+
+      s.print '<'
+      s.print tree[0]
+
+      if atts.any?
+        s.print ' '
+        s.print atts.collect { |k, v|
+          "#{k}=#{v.is_a?(String) ? v.inspect : v.inspect.inspect}"
+        }.join(' ')
+      end
+
+      if tree[2].empty?
+
+        s.puts '/>'
+
+      else
+
+        s.puts '>'
+
+        tree[2].each { |child| _to_xml(child, indent, level + (indent || 0), s) }
+
+        s.print ' ' * level
+        s.print '</'
+        s.print tree[0]
+        s.puts '>'
       end
     end
 
@@ -181,12 +203,7 @@ module Ruote
       expname = tree[0]
       expname = 'Ruote.process_definition' if level == 0 && expname == 'define'
 
-      s =
-        '  ' * level +
-        expname +
-        atts_to_x(tree[1]) { |k, v|
-          ":#{k} => #{v.inspect}"
-        }
+      s = '  ' * level + expname + atts_to_ruby(tree[1])
 
       return "#{s}\n" if tree[2].empty?
 
@@ -197,21 +214,59 @@ module Ruote
       s
     end
 
+    # Turns the given tree into a radial process definition.
+    #
     def self.to_radial(tree, level=0)
 
-      s =
-        '  ' * level +
-        tree[0] +
-        atts_to_x(tree[1]) { |k, v|
-          "#{k}: #{v.inspect}"
-        }
+      s = '  ' * level + tree[0] + atts_to_radial(tree[1]) + "\n"
 
-      return "#{s}\n" if tree[2].empty?
+      return s if tree[2].empty?
 
-      s << "\n"
-      tree[2].each { |child| s << to_radial(child, level + 1) }
+      tree[2].inject(s) { |ss, child| ss << to_radial(child, level + 1); ss }
+    end
 
-      s
+    # Produces an expid annotated radial version of the process definition,
+    # like:
+    #
+    #   0  define name: "nada"
+    #     0_0  sequence
+    #       0_0_0  alpha
+    #       0_0_1  participant "bravo", timeout: "2d", on_board: true
+    #
+    # Can be useful when debugging noisy engines.
+    #
+    def self.to_expid_radial(tree)
+
+      lines = to_raw_expid_radial(tree, '0')
+      max = lines.collect { |l| l[1].length }.max
+
+      lines.collect { |l|
+        "%#{max}s  " % l[1] + "  " * l[0] + l[2] + l[3]
+      }.join("\n")
+    end
+
+    # Used by .to_expid_radial. Outputs an array of 'lines'. Each line
+    # is a process definition line, represented as an array:
+    #
+    #   [ level, expid, name, atts ]
+    #
+    # Like in:
+    #
+    #   [[0, "0", "define", " name: \"nada\""],
+    #    [1, "0_0", "sequence", ""],
+    #    [2, "0_0_0", "alpha", ""],
+    #    [2, "0_0_1", "participant", " \"bravo\", timeout: \"2d\"]]
+    #
+    def self.to_raw_expid_radial(tree, expid='0')
+
+      i = -1
+
+      [
+        [ expid.split('_').size - 1, expid, tree[0], atts_to_radial(tree[1]) ]
+      ] +
+      tree[2].collect { |t|
+        i = i + 1; to_raw_expid_radial(t, "#{expid}_#{i}")
+      }.flatten(1)
     end
 
     # Turns the process definition tree (ruote syntax tree) to a JSON String.
@@ -241,35 +296,60 @@ module Ruote
       ((URI.parse(s); true) rescue false)
     end
 
-    # A convenience method when building XML
-    #
-    def self.builder(options={}, &block)
+    def self.to_ra_string(o)
 
-      if b = options[:builder]
-        block.call(b)
-      else
-        b = Builder::XmlMarkup.new(:indent => (options[:indent] || 0))
-        options[:builder] = b
-        b.instruct! unless options[:instruct] == false
-        block.call(b)
-        b.target!
-      end
+      return 'nil' if o == nil
+
+      s = o.to_s
+
+      return s if [ true, false ].include?(o)
+
+      i = o.inspect
+
+      return i if %w[ true false nil ].include?(s)
+      return i if s.match(/[\s:]/)
+      return s if i == "\"#{o.to_s}\""
+
+      i
     end
 
-    # As used by to_ruby and to_radial
+    # split the txt => nil entry and sorts the rest of the attributes.
     #
-    def self.atts_to_x(atts, &block)
+    def self.split_atts(atts)
+
+      atts = atts.to_a.sort_by { |k, v| k }
+      txt = atts.find { |k, v| v == nil }
+      atts.delete(txt) if txt
+
+      [ txt ? txt.first : nil, atts ]
+    end
+
+    # As used by to_radial
+    #
+    def self.atts_to_radial(atts, &block)
 
       s = []
+      txt, atts = split_atts(atts)
 
-      t = atts.find { |k, v| v == nil }
-      s << t.first.inspect if t
+      s << to_ra_string(txt) if txt
+      s += atts.collect { |k, v| "#{to_ra_string(k)}: #{to_ra_string(v)}" }
 
-      s = atts.inject(s) { |a, (k, v)|
-        #a << ":#{k} => #{v.inspect}" if t.nil? || k != t.first
-        a << block.call(k, v) if t.nil? || k != t.first
-        a
-      }.join(', ')
+      s = s.join(', ')
+
+      s.length > 0 ? " #{s}" : s
+    end
+
+    # As used by to_ruby
+    #
+    def self.atts_to_ruby(atts, &block)
+
+      s = []
+      txt, atts = split_atts(atts)
+
+      s << txt.inspect if txt
+      s += atts.collect { |k, v| ":#{k} => #{v.inspect}" }
+
+      s = s.join(', ')
 
       s.length > 0 ? " #{s}" : s
     end

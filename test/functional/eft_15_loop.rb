@@ -5,7 +5,7 @@
 # Mon Jun 29 22:29:15 JST 2009
 #
 
-require File.join(File.dirname(__FILE__), 'base')
+require File.expand_path('../base', __FILE__)
 
 
 class EftLoopTest < Test::Unit::TestCase
@@ -22,16 +22,16 @@ class EftLoopTest < Test::Unit::TestCase
 
     #noisy
 
-    @engine.register_participant :alpha do |workitem|
+    @dashboard.register_participant :alpha do |workitem|
 
-      @tracer << "a\n"
+      tracer << "a\n"
       (workitem.fields['count'] ||= 0)
       workitem.fields['count'] += 1
     end
 
-    @engine.register_participant :bravo do |workitem|
+    @dashboard.register_participant :bravo do |workitem|
 
-      @tracer << "b\n"
+      tracer << "b\n"
       workitem.fields['count'] += 1
 
       if workitem.fields['count'] > 5
@@ -52,9 +52,9 @@ class EftLoopTest < Test::Unit::TestCase
 
     #noisy
 
-    @engine.register_participant :alpha do |workitem|
+    @dashboard.register_participant :alpha do |workitem|
 
-      @tracer << "a\n"
+      tracer << "a\n"
       (workitem.fields['count'] ||= 0)
       workitem.fields['count'] += 1
 

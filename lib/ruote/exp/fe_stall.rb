@@ -1,5 +1,5 @@
 #--
-# Copyright (c) 2005-2011, John Mettraux, jmettraux@gmail.com
+# Copyright (c) 2005-2012, John Mettraux, jmettraux@gmail.com
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -26,42 +26,18 @@
 module Ruote::Exp
 
   #
-  # 're-opening' the FlowExpression class to add methods like set_vf and co.
+  # Stalls the [current branch of the] process. Does it by simply getting
+  # applied and not replying.
   #
-  class FlowExpression
+  # Mostly used for tests.
+  #
+  class StallExpression < FlowExpression
 
-    protected
+    names :stall
 
-    def set_v(key, value, unset=false)
+    def apply
 
-      if unset
-        unset_variable(key)
-      else
-        set_variable(key, value)
-      end
-    end
-
-    def set_f(key, value, unset=false)
-
-      if unset
-        h.applied_workitem['fields'].delete(key)
-      else
-        Ruote.set(h.applied_workitem['fields'], key, value)
-      end
-    end
-
-    PREFIX_REGEX = /^([^:]+):(.+)$/
-    F_PREFIX_REGEX = /^f/
-
-    def set_vf(key, value, unset=false)
-
-      field, key = if m = PREFIX_REGEX.match(key)
-        [ F_PREFIX_REGEX.match(m[1]), m[2] ]
-      else
-        [ true, key ]
-      end
-
-      field ? set_f(key, value, unset) : set_v(key, value, unset)
+      # do nothing, stall the [current branch of the] process.
     end
   end
 end

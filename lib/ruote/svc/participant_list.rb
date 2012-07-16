@@ -1,5 +1,5 @@
 #--
-# Copyright (c) 2005-2011, John Mettraux, jmettraux@gmail.com
+# Copyright (c) 2005-2012, John Mettraux, jmettraux@gmail.com
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -24,6 +24,7 @@
 
 
 require 'sourcify'
+
 require 'ruote/part/local_participant'
 require 'ruote/part/block_participant'
 require 'ruote/part/code_participant'
@@ -40,40 +41,51 @@ module Ruote
   #
   class ParticipantList
 
+    # Vanilla service #initialize.
+    #
     def initialize(context)
 
       @context = context
+    end
+
+    # Used by #register and by Ruote::ParticipantRegistrationProxy
+    #
+    def to_entry(name, participant, options, block)
+
+      raise(
+        ArgumentError.new(
+          'can only accept strings (classnames) or classes as participant arg')
+      ) unless [ String, Class, NilClass ].include?(participant.class)
+
+      klass = (participant || Ruote::BlockParticipant).to_s
+
+      options = options.remap { |(k, v), h|
+        h[k.to_s] = case v
+          when Symbol then v.to_s
+          when Proc then v.to_raw_source
+          else v
+        end
+      }
+
+      extract_blocks(block).each do |meth, code|
+        @context.treechecker.block_check(code)
+        options[meth] = code
+      end
+
+      [
+        (name.is_a?(Regexp) ? name : Regexp.new("^#{name}$")).source,
+        [ klass, options ]
+      ]
     end
 
     # Registers a participant. Called by Engine#register_participant.
     #
     def register(name, participant, options, block)
 
-      raise(
-        ArgumentError.new(
-          "can only accept strings (classnames) or classes as participant arg")
-      ) unless [ String, Class, NilClass ].include?(participant.class)
+      entry = to_entry(name, participant, options, block)
 
-      klass = (participant || Ruote::BlockParticipant).to_s
-
-      options = options.inject({}) { |h, (k, v)|
-
-        h[k.to_s] = case v
-          when Symbol then v.to_s
-          when Proc then v.to_source
-          else v
-        end
-
-        h
-      }
-
-      if block
-        options['on_workitem'] = block.to_source
-        @context.treechecker.block_check(options['on_workitem'])
-      end
-
-      key = (name.is_a?(Regexp) ? name : Regexp.new("^#{name}$")).source
-      entry = [ key, [ klass, options ] ]
+      key = entry.first
+      options = entry.last.last
 
       list = get_list
 
@@ -172,6 +184,10 @@ module Ruote
     #
     def lookup_info(pname, workitem)
 
+      wi = workitem ?
+        Ruote::Workitem.new(workitem.merge('participant_name' => pname)) :
+        nil
+
       get_list['list'].each do |regex, pinfo|
 
         next unless pname.match(regex)
@@ -181,10 +197,7 @@ module Ruote
         pa = instantiate(pinfo, :if_respond_to? => :accept?)
 
         return pinfo if pa.nil?
-
-        return pinfo if pa.accept?(
-          Ruote::Workitem.new(workitem.merge('participant_name' => pname))
-        )
+        return pinfo if Ruote.participant_send(pa, :accept?, 'workitem' => wi)
       end
 
       # nothing found...
@@ -298,6 +311,58 @@ module Ruote
 
     protected
 
+    # Used by #extract_blocks when evaluating sub-blocks.
+    #
+    class BlockParticipantContext
+      attr_reader :blocks
+      def initialize
+        @blocks = {}
+      end
+      def method_missing(m, *args, &block)
+        @blocks[m.to_s] = block.to_raw_source
+      end
+    end
+
+    # If the given block is nil, will return {}, else tries to determine
+    # if it's a single "on_workitem" block or a block that has sub-blocks,
+    # like in
+    #
+    #   dashboard.register 'toto' do
+    #     on_workitem do
+    #       puts "hey I'm toto"
+    #     end
+    #     accept? do
+    #       workitem.fields.length > 3
+    #     end
+    #   end
+    #
+    def extract_blocks(block)
+
+      return {} unless block
+
+      source = block.to_raw_source
+      tree = Ruote.parse_ruby(source)
+
+      multi =
+        tree[0, 3] == [ :iter, [ :call, nil, :proc, [ :arglist ] ], nil ] &&
+        tree[3].is_a?(Array) &&
+        tree[3].first == :block &&
+        tree[3][1..-1].all? { |e|
+          e[0] == :iter &&
+          e[2] == nil &&
+          e[1][0, 2] == [ :call, nil ] &&
+          e[1][3] == [ :arglist ]
+        }
+
+      if multi
+        bpc = BlockParticipantContext.new
+        bpc.instance_eval(&block)
+        bpc.blocks
+      else
+        { 'on_workitem' => source }
+      end
+    end
+
     # Fetches and returns the participant list in the storage.
     #
     def get_list
@@ -332,13 +397,13 @@ module Ruote
     attr_accessor :regex, :classname, :options
 
     def initialize(a)
+
       @regex = a.first
-      if a.last.is_a?(Array)
-        @classname = a.last.first
-        @options = a.last.last
+
+      @classname, @options = if a.last.is_a?(Array)
+        [ a.last.first, a.last.last ]
       else
-        @classname = a.last
-        @options = nil
+        [ a.last, nil ]
       end
     end
 
@@ -358,39 +423,49 @@ module Ruote
     #
     def self.read(elt)
 
-      return elt.to_a if elt.is_a?(ParticipantEntry)
+      case elt
 
-      if elt.is_a?(Hash)
+        when ParticipantEntry
 
-        options = elt['options'] || elt.reject { |k, v|
-          %w[ name regex regexp class classname ].include?(k)
-        }
+          elt.to_a
 
-        name = elt.find { |k, v| v == nil }
-        if name
-          name = name.first
-          elt.delete(name)
-          options.delete(name)
-        end
-        name = name || elt['name']
-        name = Ruote.regex_or_s(name)
+        when Hash
 
-        regex = name
-        unless name
-          regex = Ruote.regex_or_s(elt['regex'] || elt['regexp'])
-          regex = regex.is_a?(String) ? Regexp.new(regex) : regex
-        end
+          options = elt['options'] || elt.reject { |k, v|
+            %w[ name regex regexp class classname ].include?(k)
+          }
 
-        klass = elt['classname'] || elt['class']
+          name, _ = elt.find { |k, v| v == nil }
+          if name
+            elt.delete(name)
+            options.delete(name)
+          end
+          name = name || elt['name']
+          name = Ruote.regex_or_s(name)
 
-        return [ regex, [ klass, options ] ]
+          regex = name
+          if name.nil?
+            regex = Ruote.regex_or_s(elt['regex'] || elt['regexp'])
+            regex = regex.is_a?(String) ? Regexp.new(regex) : regex
+          end
+
+          klass = (elt['classname'] || elt['class']).to_s
+
+          [ regex, [ klass, options ] ]
+
+        when Array
+
+          if elt.size == 3
+            [ Ruote.regex_or_s(elt[0]), [ elt[1].to_s, elt[2] ] ]
+          else
+            [ Ruote.regex_or_s(elt[0]), elt[1] ]
+          end
+
+        else
+
+          raise ArgumentError.new(
+            "cannot read participant out of #{elt.inspect} (#{elt.class})")
       end
-
-      # else elt is a Array
-
-      return [ Ruote.regex_or_s(elt[0]), [ elt[1], elt[2] ] ] if elt.size == 3
-
-      [ Ruote.regex_or_s(elt[0]), elt[1] ]
     end
   end
 end

@@ -1,5 +1,5 @@
 #--
-# Copyright (c) 2005-2011, John Mettraux, jmettraux@gmail.com
+# Copyright (c) 2005-2012, John Mettraux, jmettraux@gmail.com
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -115,7 +115,12 @@ module Ruote
 
       raise(ArgumentError.new("missing 'storage_class' parameter")) unless kl
 
-      @storage = Ruote.constantize(kl).new(opts['storage_args'])
+      args = opts['storage_args']
+      args = args.is_a?(Hash) ? [ args ] : Array(args)
+      args << {} unless args.last.is_a?(Hash)
+      args.last['preserve_configuration'] = true
+
+      @storage = Ruote.constantize(kl).new(*args)
     end
 
     def consume(workitem)

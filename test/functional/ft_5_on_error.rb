@@ -5,13 +5,30 @@
 # Tue Jun  2 18:48:02 JST 2009
 #
 
-require File.join(File.dirname(__FILE__), 'base')
+require File.expand_path('../base', __FILE__)
 
 require 'ruote/participant'
 
 
 class FtOnErrorTest < Test::Unit::TestCase
   include FunctionalBase
+
+  class TroubleMaker
+    include Ruote::LocalParticipant
+
+    def consume(workitem)
+      hits = (workitem.fields['hits'] || 0) + 1
+      workitem.fields['hits'] = hits
+      workitem.trace << "#{hits.to_s}\n"
+      raise 'Houston, we have a problem !' if hits == 1
+      workitem.trace << 'done.'
+      reply(workitem)
+    end
+
+    def cancel(fei, flavour)
+      # nothing to do
+    end
+  end
 
   def test_on_error
 
@@ -21,11 +38,9 @@ class FtOnErrorTest < Test::Unit::TestCase
       end
     end
 
-    @engine.register_participant :catcher do
-      @tracer << "caught\n"
+    @dashboard.register_participant :catcher do
+      tracer << "caught\n"
     end
-
-    #noisy
 
     assert_trace('caught', pdef)
 
@@ -42,21 +57,19 @@ class FtOnErrorTest < Test::Unit::TestCase
       participant :mark_finished
     end
 
-    @engine.context.stash[:marks] = []
+    @dashboard.context.stash[:marks] = []
 
-    @engine.register_participant 'mark\_.+' do |workitem|
+    @dashboard.register_participant 'mark\_.+' do |workitem|
       stash[:marks] << workitem.participant_name
     end
 
-    #noisy
-
-    wfid = @engine.launch(pdef)
+    wfid = @dashboard.launch(pdef)
 
     wait_for(wfid)
 
     assert_equal(
       %w[ mark_started mark_failed mark_finished ],
-      @engine.context.stash[:marks])
+      @dashboard.context.stash[:marks])
   end
 
   def test_on_error_unknown_participant_name_2
@@ -67,21 +80,19 @@ class FtOnErrorTest < Test::Unit::TestCase
       participant :mark_finished
     end
 
-    @engine.context.stash[:marks] = []
+    @dashboard.context.stash[:marks] = []
 
-    @engine.register_participant 'mark\_.+' do |workitem|
+    @dashboard.register_participant 'mark\_.+' do |workitem|
       stash[:marks] << workitem.participant_name
     end
 
-    #noisy
-
-    wfid = @engine.launch(pdef)
+    wfid = @dashboard.launch(pdef)
 
     wait_for(wfid)
 
     assert_equal(
       %w[ mark_started mark_failed mark_finished ],
-      @engine.context.stash[:marks])
+      @dashboard.context.stash[:marks])
   end
 
   def test_on_error_neutralization
@@ -94,32 +105,15 @@ class FtOnErrorTest < Test::Unit::TestCase
       end
     end
 
-    @engine.register_participant :catcher do
-      @tracer << "caught\n"
+    @dashboard.register_participant :catcher do
+      tracer << "caught\n"
     end
 
-    #noisy
-
-    wfid = @engine.launch(pdef)
+    wfid = @dashboard.launch(pdef)
     wait_for(wfid)
-    ps = @engine.process(wfid)
+    ps = @dashboard.process(wfid)
 
     assert_equal(1, ps.errors.size)
-  end
-
-  class TroubleMaker
-    include Ruote::LocalParticipant
-    def consume(workitem)
-      hits = (workitem.fields['hits'] || 0) + 1
-      workitem.fields['hits'] = hits
-      workitem.trace << "#{hits.to_s}\n"
-      raise 'Houston, we have a problem !' if hits == 1
-      workitem.trace << 'done.'
-      reply(workitem)
-    end
-    def cancel(fei, flavour)
-      # nothing to do
-    end
   end
 
   def test_on_error_redo
@@ -130,9 +124,7 @@ class FtOnErrorTest < Test::Unit::TestCase
       end
     end
 
-    #noisy
-
-    @engine.register_participant :troublemaker, TroubleMaker
+    @dashboard.register_participant :troublemaker, TroubleMaker
 
     assert_trace(%w[ 1 2 done. ], pdef)
   end
@@ -145,9 +137,24 @@ class FtOnErrorTest < Test::Unit::TestCase
       end
     end
 
-    @engine.register_participant :troublemaker, TroubleMaker
+    @dashboard.register_participant :troublemaker, TroubleMaker
 
     assert_trace(%w[ 1 2 done. ], pdef)
+  end
+
+  def test_on_error_raise
+
+    pdef = Ruote.define do
+      sequence :on_error => :raise do
+        error 'nada'
+      end
+    end
+
+    wfid = @dashboard.launch(pdef)
+    r = @dashboard.wait_for(wfid)
+
+    assert_equal 'error_intercepted', r['action']
+    assert_equal 'nada', r['error']['message']
   end
 
   def test_on_error_undo
@@ -164,16 +171,14 @@ class FtOnErrorTest < Test::Unit::TestCase
       end
     end
 
-    #noisy
-
     wfid = assert_trace(%w[ a b d ], pdef)
 
-    assert_nil @engine.process(wfid)
+    assert_nil @dashboard.process(wfid)
   end
 
   def test_on_error_undo_single_expression
 
-    @engine.register_participant :nemo do |wi|
+    @dashboard.register_participant :nemo do |wi|
       wi.fields['fail_count'] = 1
       raise 'nemo'
     end
@@ -188,7 +193,7 @@ class FtOnErrorTest < Test::Unit::TestCase
 
     wfid = assert_trace(%w[ in |1 ], pdef)
 
-    assert_nil @engine.process(wfid)
+    assert_nil @dashboard.process(wfid)
   end
 
   def test_on_error_pass
@@ -205,11 +210,9 @@ class FtOnErrorTest < Test::Unit::TestCase
       end
     end
 
-    #noisy
-
     wfid = assert_trace(%w[ a b d ], pdef)
 
-    assert_nil @engine.process(wfid)
+    assert_nil @dashboard.process(wfid)
   end
 
   def test_missing_handler_triggers_regular_error
@@ -218,11 +221,9 @@ class FtOnErrorTest < Test::Unit::TestCase
       nemo
     end
 
-    #noisy
-
-    wfid = @engine.launch(pdef)
+    wfid = @dashboard.launch(pdef)
     wait_for(wfid)
-    ps = @engine.process(wfid)
+    ps = @dashboard.process(wfid)
 
     assert_equal 1, ps.errors.size
 
@@ -237,8 +238,6 @@ class FtOnErrorTest < Test::Unit::TestCase
         echo 'failed.'
       end
     end
-
-    #noisy
 
     assert_trace('failed.', pdef)
   end
@@ -256,17 +255,15 @@ class FtOnErrorTest < Test::Unit::TestCase
       end
     end
 
-    @engine.context.stash[:a_count] = 0
-    @engine.context.stash[:e_count] = 0
+    @dashboard.context.stash[:a_count] = 0
+    @dashboard.context.stash[:e_count] = 0
 
-    @engine.register_participant(:alpha) { |wi| stash[:a_count] += 1 }
-    @engine.register_participant(:emil) { |wi| stash[:e_count] += 1 }
-
-    #noisy
+    @dashboard.register_participant(:alpha) { |wi| stash[:a_count] += 1 }
+    @dashboard.register_participant(:emil) { |wi| stash[:e_count] += 1 }
 
     assert_trace 'done.', pdef
-    assert_equal 1, @engine.context.stash[:a_count]
-    assert_equal 1, @engine.context.stash[:e_count]
+    assert_equal 1, @dashboard.context.stash[:a_count]
+    assert_equal 1, @dashboard.context.stash[:e_count]
   end
 
   def test_participant_on_error
@@ -278,32 +275,33 @@ class FtOnErrorTest < Test::Unit::TestCase
       end
     end
 
-    @engine.register_participant :troublemaker do |wi|
+    @dashboard.register_participant :troublemaker do |wi|
       wi.fields['seen'] = true
       raise 'Beijing, we have a problem !'
     end
-    @engine.register_participant :troublespotter do |wi|
+    @dashboard.register_participant :troublespotter do |wi|
       stash[:workitem] = wi
-      @tracer << 'err...'
+      tracer << 'err...'
     end
 
-    #noisy
-
-    wfid = @engine.launch(pdef)
+    wfid = @dashboard.launch(pdef)
     wait_for(wfid)
 
-    #er = @engine.process(wfid).errors.first
+    #er = @dashboard.process(wfid).errors.first
     #puts er.message
     #puts er.trace
 
-    wi = @engine.context.stash[:workitem]
+    wi = @dashboard.context.stash[:workitem]
 
     assert_equal 'err...', @tracer.to_s
-    assert_equal 5, wi.error.size
     assert_equal 'RuntimeError', wi.error['class']
     assert_equal 'Beijing, we have a problem !', wi.error['message']
     assert_equal Array, wi.error['trace'].class
     assert_equal true, wi.fields['seen']
+
+    assert_equal(
+      %w[ at class details deviations fei message trace tree ],
+      wi.error.keys.sort)
   end
 
   class Murphy
@@ -328,16 +326,14 @@ class FtOnErrorTest < Test::Unit::TestCase
       end
     end
 
-    @engine.register do
+    @dashboard.register do
       murphy FtOnErrorTest::Murphy
       catchall
     end
 
-    #@engine.noisy = true
+    @dashboard.launch(pdef)
 
-    @engine.launch(pdef)
-
-    @engine.wait_for(:catcher)
+    @dashboard.wait_for(:catcher)
   end
 
   class RescuerOne
@@ -369,16 +365,332 @@ class FtOnErrorTest < Test::Unit::TestCase
       end
     end
 
-    @engine.register do
+    @dashboard.register do
       rescuer RescuerOne
       rescuer RescuerTwo
     end
 
-    #@engine.noisy = true
-
     assert_trace('two', pdef)
 
     assert_equal 1, logger.log.select { |e| e['action'] == 'fail' }.size
+  end
+
+  # Only to show what's behind :on_error
+  #
+  def test_on_error_multi
+
+    pdef = Ruote.define do
+      sequence :on_error => [
+        [ /unknown participant/, 'alpha' ],
+        [ nil, 'bravo' ]
+      ] do
+        nada
+      end
+    end
+
+    @dashboard.register_participant /alpha|bravo/ do |workitem|
+      tracer << workitem.participant_name
+    end
+
+    wfid = @dashboard.launch(pdef)
+    @dashboard.wait_for(wfid)
+
+    assert_equal 'alpha', @tracer.to_s
+  end
+
+  # Let's be open
+  #
+  def test_on_error_multi_nice
+
+    pdef = Ruote.process_definition do
+      sequence :on_error => [
+        { /unknown participant/ => 'alpha' },
+        { // => 'bravo' }
+      ] do
+        nada
+      end
+    end
+
+    @dashboard.register_participant /alpha|bravo/ do |workitem|
+      tracer << workitem.participant_name
+    end
+
+    wfid = @dashboard.launch(pdef)
+    @dashboard.wait_for(wfid)
+
+    assert_equal 'alpha', @tracer.to_s
+  end
+
+  def test_on_error_multi_pass
+
+    @dashboard.register_participant /alpha|bravo/ do |workitem|
+      tracer << workitem.participant_name
+    end
+
+    pdef = Ruote.define do
+      sequence :on_error => [
+        { /unknown participant/ => :pass },
+        { // => 'bravo' }
+      ] do
+        nada
+      end
+      echo 'done.'
+    end
+
+    wfid = @dashboard.launch(pdef)
+    @dashboard.wait_for(wfid)
+
+    assert_equal 'done.', @tracer.to_s
+  end
+
+  def test_on_error_rewind
+
+    pdef = Ruote.define do
+      cursor :on_error => 'rewind' do
+        echo 'in'
+        inc 'v:counter'
+        error 'fail', :if => '${v:counter} == 1'
+        echo 'over.'
+      end
+    end
+
+    wfid = @dashboard.launch(pdef)
+    @dashboard.wait_for(wfid)
+
+    assert_equal %w[ in in over. ], @tracer.to_a
+  end
+
+  def test_on_error_jump_to
+
+    pdef = Ruote.define do
+      cursor :on_error => 'jump to shark' do
+        alpha
+        error 'fail'
+        bravo
+        shark
+        delta
+      end
+    end
+
+    @dashboard.register '.+' do |workitem|
+      tracer << workitem.participant_name + "\n"
+    end
+
+    wfid = @dashboard.launch(pdef)
+    @dashboard.wait_for(wfid)
+
+    assert_equal %w[ alpha shark delta ], @tracer.to_a
+  end
+
+  def test_on_error_var
+
+    pdef = Ruote.define do
+      define 'sub0' do
+        set 'v:/a' => '$f:__error__'
+      end
+      sequence :on_error => 'sub0' do
+        error 'nada'
+      end
+    end
+
+    wfid = @dashboard.launch(pdef)
+    r = @dashboard.wait_for(wfid)
+
+    assert_equal(
+      'terminated',
+      r['action'])
+    assert_equal(
+      %w[ at class details deviations fei message trace tree ],
+      r['variables']['a'].keys.sort)
+    assert_equal(
+      [ 'error', { 'nada' => nil }, [] ],
+      r['variables']['a']['tree'])
+  end
+
+  def test_on_error_kill_process
+
+    pdef = Ruote.define do
+      sequence do
+        sequence :on_error => 'cancel_process' do
+          nemo0
+        end
+        nemo1
+      end
+    end
+
+    wfid = @dashboard.launch(pdef)
+    r = @dashboard.wait_for(wfid)
+
+    assert_equal 'terminated', r['action']
+  end
+
+  #
+  # the "second take" feature
+
+  def test_second_take
+
+    @dashboard.register_participant :troublemaker, TroubleMaker
+
+    pdef = Ruote.define do
+      define 'sub0' do
+        set '__on_error__' => 'redo'
+      end
+      sequence :on_error => 'sub0' do
+        troublemaker
+      end
+    end
+
+    wfid = @dashboard.launch(pdef)
+    r = @dashboard.wait_for(wfid)
+
+    assert_equal 'terminated', r['action']
+    assert_equal 3, r['workitem']['fields']['_trace'].size
+  end
+
+  def test_blank_second_take
+
+    pdef = Ruote.define do
+      define 'sub0' do
+        set '__on_error__' => ''
+      end
+      sequence :on_error => 'sub0' do
+        nada
+      end
+    end
+
+    wfid = @dashboard.launch(pdef)
+    r = @dashboard.wait_for(wfid)
+
+    assert_equal 'terminated', r['action']
+  end
+
+  def test_second_take_raise
+
+    pdef = Ruote.define do
+      define 'sub0' do
+        set '__on_error__' => 'raise'
+      end
+      sequence :on_error => 'sub0' do
+        error 'nada'
+      end
+    end
+
+    wfid = @dashboard.launch(pdef)
+    r = @dashboard.wait_for(wfid)
+
+    assert_equal 'error_intercepted', r['action']
+    assert_equal 'nada', r['error']['message']
+  end
+
+  # "stashing that for now"
+  #
+#  def test_second_take_skip
+#
+#    pdef = Ruote.define do
+#      define 'sub0' do
+#        set '__on_error__' => 'cancel'
+#      end
+#      define 'sub1' do
+#        set 'sub1' => true
+#      end
+#      sequence :on_error => 'sub0', :on_cancel => 'sub1' do
+#        error 'nada'
+#      end
+#    end
+#
+#    wfid = @dashboard.launch(pdef)
+#    r = @dashboard.wait_for(wfid)
+#
+#    #assert_equal 'error_intercepted', r['action']
+#    #assert_equal 'nada', r['error']['message']
+#  end
+
+  # behaves like 'undo' when there is no on_cancel present
+  #
+  def test_on_error_cancel
+
+    pdef = Ruote.define do
+      sequence :on_error => 'cancel' do
+        echo 'n'
+        error 'nada'
+      end
+    end
+
+    wfid = @dashboard.launch(pdef)
+    r = @dashboard.wait_for(wfid)
+
+    assert_equal 'terminated', r['action']
+    assert_equal %w[ n ], @tracer.to_a
+  end
+
+  def test_on_error_and_on_cancel
+
+    pdef = Ruote.define do
+      define 'rollback' do
+        echo 'rollback'
+      end
+      sequence :on_cancel => 'rollback', :on_error => 'cancel_process' do
+        echo 'in'
+        error 'nada'
+      end
+    end
+
+    wfid = @dashboard.launch(pdef)
+    r = @dashboard.wait_for(wfid)
+
+    assert_equal 'terminated', r['action']
+
+    assert_equal %w[ in rollback ], @tracer.to_a
+
+    assert_equal(
+      1,
+      @dashboard.logger.log.select { |m| m['action'] == 'cancel_process' }.size)
+  end
+
+  def test_on_error_immediate
+
+    pdef = Ruote.define do
+      define 'rollback' do
+        echo 'rollback'
+      end
+      sequence :on_error => '!kill_process' do
+        sequence :on_cancel => 'rollback' do
+          echo 'in'
+          error 'nada'
+        end
+      end
+    end
+
+    wfid = @dashboard.launch(pdef)
+    r = @dashboard.wait_for(wfid)
+
+    assert_equal 'terminated', r['action']
+    assert_equal %w[ in ], @tracer.to_a
+
+    assert_nil @dashboard.ps(wfid)
+  end
+
+  def test_on_error_immediate_with_tree
+
+    pdef = Ruote.define do
+      define 'rollback' do
+        echo 'rollback'
+      end
+      sequence :on_error => [ '!kill_process', {}, [] ] do
+        sequence :on_cancel => 'rollback' do
+          echo 'in'
+          error 'nada'
+        end
+      end
+    end
+
+    wfid = @dashboard.launch(pdef)
+    r = @dashboard.wait_for(wfid)
+
+    assert_equal 'terminated', r['action']
+    assert_equal %w[ in ], @tracer.to_a
+
+    assert_nil @dashboard.ps(wfid)
   end
 end
 

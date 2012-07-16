@@ -5,7 +5,7 @@
 # Tue Oct 27 16:13:41 JST 2009
 #
 
-require File.join(File.dirname(__FILE__), 'base')
+require File.expand_path('../base', __FILE__)
 
 
 class EftCronTest < Test::Unit::TestCase
@@ -22,19 +22,19 @@ class EftCronTest < Test::Unit::TestCase
     #noisy
 
     t = Time.now
-    wfid = @engine.launch(pdef)
+    wfid = @dashboard.launch(pdef)
 
     wait_for(7)
 
     d = Time.now - t
 
-    @engine.cancel_process(wfid)
+    @dashboard.cancel_process(wfid)
 
     wait_for(5)
 
     assert_match /^ok\nok/, @tracer.to_s
-    assert_nil @engine.process(wfid)
-    assert_equal 0, @engine.storage.get_many('schedules').size
+    assert_nil @dashboard.process(wfid)
+    assert_equal 0, @dashboard.storage.get_many('schedules').size
     #assert d < 5.0, "#{d} < 5.0 :("
   end
 
@@ -48,17 +48,17 @@ class EftCronTest < Test::Unit::TestCase
 
     #noisy
 
-    wfid = @engine.launch(pdef)
+    wfid = @dashboard.launch(pdef)
 
     wait_for(7)
 
-    @engine.cancel_process(wfid)
+    @dashboard.cancel_process(wfid)
 
     wait_for(5)
 
     assert_match /^ok\nok/, @tracer.to_s
-    assert_nil @engine.process(wfid)
-    assert_equal 0, @engine.storage.get_many('schedules').size
+    assert_nil @dashboard.process(wfid)
+    assert_equal 0, @dashboard.storage.get_many('schedules').size
   end
 end
 

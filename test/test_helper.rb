@@ -7,10 +7,16 @@
 
 require File.join(File.dirname(__FILE__), 'path_helper')
 
+require 'pp'
 require 'test/unit'
 require 'rubygems'
 
+# Fail fast, especially when testing
+#
+Thread.abort_on_exception = true
 
+# A helper method
+#
 def require_json
 
   return if $json_lib_loaded

@@ -5,7 +5,7 @@
 # Fri Dec  4 17:15:10 JST 2009
 #
 
-require File.join(File.dirname(__FILE__), 'base.rb')
+require File.expand_path('../base', __FILE__)
 
 
 class Ruote::Worker
@@ -62,37 +62,38 @@ module ConcurrentBase
 
   def setup
 
-    @storage = determine_storage(
-      's_logger' => [ 'ruote/log/test_logger', 'Ruote::TestLogger' ])
+    @storage = determine_storage({})
 
-    @engine0 = Ruote::Engine.new(Ruote::Worker.new(@storage), false)
-    @engine1 = Ruote::Engine.new(Ruote::Worker.new(@storage), false)
+    @dashboard0 = Ruote::Engine.new(Ruote::Worker.new(@storage), false)
+    @dashboard1 = Ruote::Engine.new(Ruote::Worker.new(@storage), false)
       #
       # the 2 engines are set with run=false
 
     @tracer0 = Tracer.new
     @tracer1 = Tracer.new
 
-    @engine0.context.add_service('s_tracer', @tracer0, nil)
-    @engine1.context.add_service('s_tracer', @tracer1, nil)
+    @dashboard0.context.add_service('s_tracer', @tracer0, nil)
+    @dashboard1.context.add_service('s_tracer', @tracer1, nil)
 
-    @engine1.context.logger.color = '32' # green
+    @dashboard1.context.logger.color = '32' # green
+
+    noisy if ARGV.include?('-N')
   end
 
   def teardown
 
     @storage.purge!
 
-    @engine0.shutdown
-    @engine1.shutdown
+    @dashboard0.shutdown
+    @dashboard1.shutdown
   end
 
   protected
 
   def noisy
 
-    @engine0.context.logger.noisy = true
-    @engine1.context.logger.noisy = true
+    @dashboard0.noisy = true
+    @dashboard1.noisy = true
   end
 end
 

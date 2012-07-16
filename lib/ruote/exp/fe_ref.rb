@@ -1,5 +1,5 @@
 #--
-# Copyright (c) 2005-2011, John Mettraux, jmettraux@gmail.com
+# Copyright (c) 2005-2012, John Mettraux, jmettraux@gmail.com
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -42,7 +42,7 @@ module Ruote::Exp
   #
   # Subprocesses have the priority over participants.
   #
-  # Note : this expression is used by the worker when substituting unknown
+  # Note: this expression is used by the worker when substituting unknown
   # expression names with participant or subprocess refs.
   #
   class RefExpression < FlowExpression
@@ -57,6 +57,9 @@ module Ruote::Exp
         key = name
         tree[1]['ref'] = key
       end
+
+      key = dsub(key)
+        # see test/functional/ft_62_
 
       key2, value = iterative_var_lookup(key)
 
@@ -73,27 +76,54 @@ module Ruote::Exp
         value = key2 if ( ! @h['participant']) && (key2 != key)
       end
 
-      if value.is_a?(String) && value.index("def consume(") && (Rufus::TreeChecker.parse(value) rescue false)
-        #
-        # participant code passed
+      new_exp_name, new_exp_class = nil
 
-        @h['participant'] = [ 'Ruote::CodeParticipant', { 'code' => value } ]
-        tree[1]['ref'] = key
+      # warning: abusing on 'then' in order to have [somehow] more readability
 
-      elsif value.is_a?(Hash) && value['on_workitem']
+      if
+        value.is_a?(String)
+      then
+
+        if
+          @context['participant_in_variable_enabled'] &&
+          value.match(/\bdef consume\(/) &&
+          (Rufus::TreeChecker.parse(value) rescue false)
+        then
+          #
+          # participant code passed
+
+          @h['participant'] = [ 'Ruote::CodeParticipant', { 'code' => value } ]
+          tree[1]['ref'] = key
+
+        elsif klass = @context.expmap.expression_class(tree[1]['ref'])
+          #
+          # aliased expression
+
+          new_exp_name = value
+          new_exp_class = klass
+        end
+
+      elsif
+        @context['participant_in_variable_enabled'] &&
+        value.is_a?(Hash) &&
+        value['on_workitem']
+      then
         #
         # participant 'defined' in var
 
         @h['participant'] = [ 'Ruote::BlockParticipant', value ]
 
-      elsif value.is_a?(Array) && value.size == 2 && value.last.is_a?(Hash)
+      elsif
+        value.is_a?(Array) &&
+        value.size == 2 && value.last.is_a?(Hash)
+      then
         #
         # participant 'registered' in var
 
         @h['participant'] = value
       end
 
-      unless value || @h['participant']
+      if value == nil && @h['participant'] == nil
         #
         # unknown participant or subprocess
 
@@ -103,30 +133,23 @@ module Ruote::Exp
         raise("unknown participant or subprocess '#{tree[1]['ref']}'")
       end
 
-      new_exp_name, new_exp_class = @h['participant'] ?
-        [ 'participant', Ruote::Exp::ParticipantExpression ] :
+      new_exp_name, new_exp_class = if new_exp_name
+        [ new_exp_name, new_exp_class ]
+      elsif @h['participant']
+        [ 'participant', Ruote::Exp::ParticipantExpression ]
+      else
         [ 'subprocess', Ruote::Exp::SubprocessExpression ]
+      end
 
       tree[0] = new_exp_name
       @h['name'] = new_exp_name
 
       new_exp = new_exp_class.new(@context, @h)
 
-      do_schedule_timeout(attribute(:timeout)) if new_exp_name == 'subprocess'
-        #
-        # since ref neutralizes consider_timeout because participant expressions
-        # handle timeout by themselves, we have to force timeout consideration
-        # for subprocess expressions
-
       #new_exp.initial_persist
         # not necessary
 
       new_exp.apply
-    end
-
-    def consider_timeout
-
-      # neutralized
     end
   end
 end

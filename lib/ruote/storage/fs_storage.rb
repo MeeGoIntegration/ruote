@@ -1,5 +1,5 @@
 #--
-# Copyright (c) 2005-2011, John Mettraux, jmettraux@gmail.com
+# Copyright (c) 2005-2012, John Mettraux, jmettraux@gmail.com
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -53,19 +53,31 @@ module Ruote
     #
     def initialize(dir, options={})
 
+      if dir.is_a?(Hash) && options == {}
+        options = dir
+        dir = options.delete('dir')
+      end
+
       FileUtils.mkdir_p(dir)
 
       @cloche = Rufus::Cloche.new(
         :dir => dir, :nolock => options['cloche_nolock'])
 
-      @options = options
+      replace_engine_configuration(options)
+    end
 
-      @cloche.put(@options.merge('type' => 'configurations', '_id' => 'engine'))
+    def dir
+
+      @cloche.dir
     end
 
     def put(doc, opts={})
 
-      @cloche.put(doc.merge!('put_at' => Ruote.now_to_utc_s), opts)
+      doc = doc.send(
+        opts[:update_rev] ? 'merge!' : 'merge',
+        'put_at' => Ruote.now_to_utc_s)
+
+      @cloche.put(doc, opts)
     end
 
     def get(type, key)
@@ -80,13 +92,13 @@ module Ruote
 
     def get_many(type, key=nil, opts={})
 
-      if key
-        key = Array(key)
-        key = key.map { |k| "!#{k}" } if key.first.is_a?(String)
-      end
-        # assuming /!#{wfid}$/...
+      keys = key ? Array(key) : nil
 
-      @cloche.get_many(type, key, opts)
+      keys = keys.map { |k|
+        type == 'schedules' ? /!#{k}-\d+$/ : "!#{k}"
+      } if keys && keys.first.is_a?(String)
+
+      @cloche.get_many(type, keys, opts)
     end
 
     def ids(type)
@@ -101,7 +113,7 @@ module Ruote
       FileUtils.rm_rf(@cloche.dir)
     end
 
-    # No need for that here (FsStorage adds type on the fly).
+    # No need for that here (FsStorage can add types on the fly).
     #
     def add_type(type)
     end
@@ -109,18 +121,6 @@ module Ruote
     def purge_type!(type)
 
       @cloche.purge_type!(type)
-    end
-
-    def dump(type)
-
-      s = "=== #{type} ===\n"
-
-      @cloche.get_many(type).inject(s) do |s1, e|
-        s1 << "\n"
-        e.keys.sort.inject(s1) do |s2, k|
-          s2 << "  #{k} => #{e[k].inspect}\n"
-        end
-      end
     end
 
     # Shuts this storage down.

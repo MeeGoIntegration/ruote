@@ -5,7 +5,7 @@
 # Thu Dec  3 22:39:03 JST 2009
 #
 
-require File.join(File.dirname(__FILE__), 'base')
+require File.expand_path('../base', __FILE__)
 
 require 'ruote/part/storage_participant'
 
@@ -19,18 +19,18 @@ class FtStorageParticipantTest < Test::Unit::TestCase
       alpha
     end
 
-    @engine.register_participant :alpha, Ruote::StorageParticipant
+    @dashboard.register_participant :alpha, Ruote::StorageParticipant
 
     #noisy
 
-    wfid = @engine.launch(pdef)
+    wfid = @dashboard.launch(pdef)
 
     wait_for(:alpha)
 
-    assert_equal 1, @engine.storage.get_many('workitems').size
+    assert_equal 1, @dashboard.storage.get_many('workitems').size
 
     alpha = Ruote::StorageParticipant.new
-    alpha.context = @engine.context
+    alpha.context = @dashboard.context
 
     wi = alpha.first
 
@@ -43,7 +43,7 @@ class FtStorageParticipantTest < Test::Unit::TestCase
 
     wait_for(wfid)
 
-    assert_nil @engine.process(wfid)
+    assert_nil @dashboard.process(wfid)
   end
 
   def test_purge
@@ -52,18 +52,18 @@ class FtStorageParticipantTest < Test::Unit::TestCase
       alpha
     end
 
-    @engine.register_participant :alpha, Ruote::StorageParticipant
+    @dashboard.register_participant :alpha, Ruote::StorageParticipant
 
     #noisy
 
-    wfid = @engine.launch(pdef)
+    wfid = @dashboard.launch(pdef)
 
     wait_for(:alpha)
 
-    assert_equal 1, @engine.storage.get_many('workitems').size
+    assert_equal 1, @dashboard.storage.get_many('workitems').size
 
     alpha = Ruote::StorageParticipant.new
-    alpha.context = @engine.context
+    alpha.context = @dashboard.context
 
     assert !alpha.first.nil?
 
@@ -80,22 +80,22 @@ class FtStorageParticipantTest < Test::Unit::TestCase
       alpha
     end
 
-    @engine.register_participant :alpha, Ruote::StorageParticipant
+    @dashboard.register_participant :alpha, Ruote::StorageParticipant
 
     wfids = []
 
-    n.times { wfids << @engine.launch(pdef) }
+    n.times { wfids << @dashboard.launch(pdef) }
 
-    while @engine.storage_participant.size < n
+    while @dashboard.storage_participant.size < n
       sleep 0.400
     end
 
     assert_equal(
       [ Ruote::Workitem ] * 3,
-      @engine.storage_participant.all.collect { |wi| wi.class })
+      @dashboard.storage_participant.all.collect { |wi| wi.class })
 
-    assert_equal 3, @engine.storage_participant.size
-    assert_equal 3, @engine.storage_participant.all(:count => true)
+    assert_equal 3, @dashboard.storage_participant.size
+    assert_equal 3, @dashboard.storage_participant.all(:count => true)
   end
 
   def test_by_wfid
@@ -107,16 +107,16 @@ class FtStorageParticipantTest < Test::Unit::TestCase
       end
     end
 
-    @engine.register_participant :alpha, Ruote::StorageParticipant
+    @dashboard.register_participant :alpha, Ruote::StorageParticipant
 
-    wfid = @engine.launch(pdef)
+    wfid = @dashboard.launch(pdef)
 
     wait_for(:alpha)
     wait_for(:alpha)
       # wait for the two workitems
 
     alpha = Ruote::StorageParticipant.new
-    alpha.context = @engine.context
+    alpha.context = @dashboard.context
 
     assert_equal 2, alpha.size
     assert_equal 2, alpha.by_wfid(wfid).size
@@ -140,15 +140,15 @@ class FtStorageParticipantTest < Test::Unit::TestCase
 
   def prepare_al_bravo
 
-    @engine.register_participant :alpha, Ruote::StorageParticipant
-    @engine.register_participant :bravo, Ruote::StorageParticipant
+    @dashboard.register_participant :alpha, Ruote::StorageParticipant
+    @dashboard.register_participant :bravo, Ruote::StorageParticipant
 
-    @wfid = @engine.launch(CON_AL_BRAVO)
+    @wfid = @dashboard.launch(CON_AL_BRAVO)
 
     wait_for(:bravo)
 
     @part = Ruote::StorageParticipant.new
-    @part.context = @engine.context
+    @part.context = @dashboard.context
   end
 
   def test_by_participant
@@ -168,7 +168,7 @@ class FtStorageParticipantTest < Test::Unit::TestCase
   def test_by_participant_and_limit
 
     3.times do |i|
-      @engine.storage.put(
+      @dashboard.storage.put(
         'type' => 'workitems',
         '_id' => "0_#{i}!ffffff!20101219-yamamba",
         'participant_name' => 'al',
@@ -176,7 +176,7 @@ class FtStorageParticipantTest < Test::Unit::TestCase
         'fields' => {})
     end
     3.times do |i|
-      @engine.storage.put(
+      @dashboard.storage.put(
         'type' => 'workitems',
         '_id' => "1_#{i}!eeeeee!20101219-yamamba",
         'participant_name' => 'bob',
@@ -184,7 +184,7 @@ class FtStorageParticipantTest < Test::Unit::TestCase
         'fields' => {})
     end
 
-    sp = @engine.storage_participant
+    sp = @dashboard.storage_participant
 
     assert_equal 6, sp.size
 
@@ -235,7 +235,7 @@ class FtStorageParticipantTest < Test::Unit::TestCase
 
     prepare_al_bravo
 
-    wfid2 = @engine.launch(CON_AL_BRAVO, 'adversary' => 'B')
+    wfid2 = @dashboard.launch(CON_AL_BRAVO, 'adversary' => 'B')
     wait_for(:bravo)
 
     #@part.query({}).each { |wi| puts '-' * 80; p wi }
@@ -281,7 +281,7 @@ class FtStorageParticipantTest < Test::Unit::TestCase
     n = 7
 
     n.times do |i|
-      @engine.storage.put(
+      @dashboard.storage.put(
         'type' => 'workitems',
         '_id' => "0_#{i}!ffffff!20101219-yamamba",
         'participant_name' => 'al',
@@ -289,7 +289,7 @@ class FtStorageParticipantTest < Test::Unit::TestCase
         'fields' => {})
     end
     n.times do |i|
-      @engine.storage.put(
+      @dashboard.storage.put(
         'type' => 'workitems',
         '_id' => "1_#{i}!ffffff!20101219-yamamba",
         'participant_name' => 'bob',
@@ -297,7 +297,7 @@ class FtStorageParticipantTest < Test::Unit::TestCase
         'fields' => {})
     end
 
-    sp = @engine.storage_participant
+    sp = @dashboard.storage_participant
 
     assert_equal n * 2, sp.query({}).size
     assert_equal n * 2, sp.query(:offset => 0, :limit => 100).size
@@ -322,15 +322,15 @@ class FtStorageParticipantTest < Test::Unit::TestCase
 
   def test_initialize_engine_then_opts
 
-    @engine.register_participant :alpha, Ruote::StorageParticipant
+    @dashboard.register_participant :alpha, Ruote::StorageParticipant
 
-    wfid = @engine.launch(Ruote.process_definition do
+    wfid = @dashboard.launch(Ruote.process_definition do
       alpha
     end)
 
     wait_for(:alpha)
 
-    part = Ruote::StorageParticipant.new(@engine)
+    part = Ruote::StorageParticipant.new(@dashboard)
 
     assert_equal 1, part.size
   end
@@ -341,32 +341,32 @@ class FtStorageParticipantTest < Test::Unit::TestCase
       alpha
     end
 
-    @engine.register_participant :alpha, Ruote::StorageParticipant
+    @dashboard.register_participant :alpha, Ruote::StorageParticipant
 
     #noisy
 
-    wfid = @engine.launch(pdef)
+    wfid = @dashboard.launch(pdef)
 
     wait_for(:alpha)
 
-    @engine.cancel_process(wfid)
+    @dashboard.cancel_process(wfid)
 
     wait_for(wfid)
 
-    assert_nil @engine.process(wfid)
-    assert_equal 0, Ruote::StorageParticipant.new(@engine).size
+    assert_nil @dashboard.process(wfid)
+    assert_equal 0, Ruote::StorageParticipant.new(@dashboard).size
   end
 
   def test_shared_participant
 
-    @engine.register_participant 'step_.*', Ruote::StorageParticipant
+    @dashboard.register_participant 'step_.*', Ruote::StorageParticipant
 
-    wfid = @engine.launch(
+    wfid = @dashboard.launch(
       Ruote.process_definition { sequence { step_one; step_two } })
 
     wait_for(:step_one)
 
-    participant = Ruote::StorageParticipant.new(@engine)
+    participant = Ruote::StorageParticipant.new(@dashboard)
 
     items = participant.by_wfid(wfid)
 
@@ -388,16 +388,16 @@ class FtStorageParticipantTest < Test::Unit::TestCase
 
     wait_for(wfid)
 
-    assert_nil @engine.process(wfid)
+    assert_nil @dashboard.process(wfid)
   end
 
   def test_update_workitem
 
-    @engine.register_participant 'alpha', Ruote::StorageParticipant
+    @dashboard.register_participant 'alpha', Ruote::StorageParticipant
 
-    wfid = @engine.launch(Ruote.process_definition { alpha })
+    wfid = @dashboard.launch(Ruote.process_definition { alpha })
 
-    alpha = Ruote::StorageParticipant.new(@engine)
+    alpha = Ruote::StorageParticipant.new(@dashboard)
 
     wait_for(:alpha)
 
@@ -412,7 +412,7 @@ class FtStorageParticipantTest < Test::Unit::TestCase
 
   def test_registration
 
-    pa = @engine.register_participant 'alpha', Ruote::StorageParticipant
+    pa = @dashboard.register_participant 'alpha', Ruote::StorageParticipant
 
     assert_equal Ruote::StorageParticipant, pa.class
 
@@ -421,9 +421,9 @@ class FtStorageParticipantTest < Test::Unit::TestCase
 
   def test_various_args
 
-    sp = @engine.register_participant 'alpha', Ruote::StorageParticipant
+    sp = @dashboard.register_participant 'alpha', Ruote::StorageParticipant
 
-    wfid = @engine.launch(Ruote.process_definition { alpha })
+    wfid = @dashboard.launch(Ruote.process_definition { alpha })
 
     wait_for(:alpha)
 
@@ -438,9 +438,9 @@ class FtStorageParticipantTest < Test::Unit::TestCase
 
   def test_by_fei
 
-    sp = @engine.register_participant 'alpha', Ruote::StorageParticipant
+    sp = @dashboard.register_participant 'alpha', Ruote::StorageParticipant
 
-    wfid = @engine.launch(Ruote.process_definition { alpha })
+    wfid = @dashboard.launch(Ruote.process_definition { alpha })
 
     wait_for(:alpha)
 
@@ -455,19 +455,19 @@ class FtStorageParticipantTest < Test::Unit::TestCase
 
   def test_engine_storage_participant
 
-    @engine.register_participant 'step_.*', Ruote::StorageParticipant
+    @dashboard.register_participant 'step_.*', Ruote::StorageParticipant
 
-    wfid = @engine.launch(Ruote.process_definition { step_one })
+    wfid = @dashboard.launch(Ruote.process_definition { step_one })
 
     wait_for(:step_one)
 
-    assert_equal 1, @engine.storage_participant.size
-    assert_equal 'step_one', @engine.storage_participant.first.participant_name
+    assert_equal 1, @dashboard.storage_participant.size
+    assert_equal 'step_one', @dashboard.storage_participant.first.participant_name
   end
 
   class MyParticipant < Ruote::StorageParticipant
-    def consume(wi)
-      @context.tracer << "consume\n"
+    def on_workitem
+      @context.tracer << "on_workitem\n"
       super
     end
     #def update(wi)
@@ -482,40 +482,246 @@ class FtStorageParticipantTest < Test::Unit::TestCase
       alpha
     end
 
-    @engine.register do
+    @dashboard.register do
       alpha MyParticipant
     end
 
-    @engine.launch(pdef)
-    @engine.wait_for(:alpha)
+    @dashboard.launch(pdef)
+    @dashboard.wait_for(:alpha)
 
-    part = @engine.participant(:alpha)
+    part = @dashboard.participant(:alpha)
 
     initial_rev = part.first.h['_rev']
 
     part.update(part.first)
 
     assert_not_equal initial_rev, part.first.h['_rev']
-    assert_equal %w[ consume ], @tracer.to_a
+    assert_equal %w[ on_workitem ], @tracer.to_a
   end
 
   def test_fetch
 
-    @engine.register do
+    @dashboard.register do
       catchall
     end
 
-    @engine.launch(Ruote.define do
+    @dashboard.launch(Ruote.define do
       alpha
     end)
 
-    @engine.wait_for(:alpha)
+    @dashboard.wait_for(:alpha)
 
-    fei = @engine.storage_participant.first.fei
+    fei = @dashboard.storage_participant.first.fei
 
-    wi = @engine.storage_participant.send(:fetch, fei)
+    wi = @dashboard.storage_participant.send(:fetch, fei)
 
-    assert_equal Hash, wi.class
+    assert wi.kind_of?(Hash)
+  end
+
+  # StorageParticipant includes Enumerable, therefore, it should respond
+  # to select...
+  #
+  # http://groups.google.com/group/openwferu-users/t/6b594fd141f5d4b1
+  #
+  def test_select
+
+    @dashboard.register { catchall }
+
+    @dashboard.launch(Ruote.define do
+      concurrence { alpha; bravo; charly }
+    end)
+
+    while @dashboard.storage_participant.size < 3; end
+
+    assert_equal(
+      1,
+      @dashboard.storage_participant.select { |wi|
+        wi.participant_name == 'bravo'
+      }.size)
+  end
+
+  def test_reserve
+
+    #@dashboard.noisy = true
+
+    @dashboard.register { catchall }
+
+    wfid = @dashboard.launch(Ruote.define do
+      alpha
+    end)
+
+    while @dashboard.storage_participant.size < 1; end
+
+    wi0 = @dashboard.storage_participant.first
+
+    # #reserve yields the [updated] workitem when successful
+
+    wi = @dashboard.storage_participant.first
+    wi = @dashboard.storage_participant.reserve(wi, 'user0')
+
+    assert_equal 'user0', wi.owner
+    assert_not_equal wi0.h._rev, wi.h._rev # it's not the same wi
+
+    # #reserve yields nil when failing
+
+    wi = @dashboard.storage_participant.first
+    wi = @dashboard.storage_participant.reserve(wi, 'user1')
+
+    assert_equal nil, wi
+
+    # #proceed raises when the owner is not the right one
+
+    assert_raise(ArgumentError) do
+      @dashboard.storage_participant.proceed(wi0)
+    end
+
+    wi = @dashboard.storage_participant.first
+    @dashboard.storage_participant.proceed(wi)
+
+    @dashboard.wait_for('terminated')
+
+    # #proceed raises when the workitem is gone
+
+    assert_raise(ArgumentError) do
+      @dashboard.storage_participant.proceed(wi)
+    end
+  end
+
+  def test_delegate
+
+    #@dashboard.noisy = true
+
+    @dashboard.register { catchall }
+
+    wfid = @dashboard.launch(Ruote.define do
+      alpha
+    end)
+
+    while @dashboard.storage_participant.size < 1; end
+
+    wi0 = @dashboard.storage_participant.first
+
+    # can't delegate when there is no owner
+
+    assert_raise(ArgumentError) do
+      @dashboard.storage_participant.delegate(wi0, 'user0')
+    end
+
+    # can't delegate if the owner is not the right one
+
+    wi1 = @dashboard.storage_participant.reserve(wi0, 'user0')
+    wi1.h.owner = 'user9'
+
+    assert_raise(ArgumentError) do
+      @dashboard.storage_participant.delegate(wi1, 'user0')
+    end
+
+    # it delegates alrighty
+
+    wi1.h.owner = 'user0'
+    wi2 = @dashboard.storage_participant.delegate(wi1, 'user1')
+
+    assert_equal 'user1', wi2.h.owner
+
+    # it's ok to delegate to nil (disowns workitem)
+
+    wi = @dashboard.storage_participant.first
+    x = @dashboard.storage_participant.delegate(wi, nil)
+
+    wi = @dashboard.storage_participant.first
+
+    assert_equal nil, wi.h.owner
+  end
+
+  def test_worklist
+
+    assert_equal Ruote::StorageParticipant, @dashboard.storage_participant.class
+    assert_equal Ruote::StorageParticipant, @dashboard.worklist.class
+  end
+
+  def test_flunk
+
+    @dashboard.register :alpha, Ruote::StorageParticipant
+
+    wfid = @dashboard.launch(Ruote.define do
+      alpha
+    end)
+
+    @dashboard.wait_for('dispatched')
+
+    assert_equal 1, @dashboard.storage_participant.size
+
+    wi = @dashboard.storage_participant.first
+
+    @dashboard.storage_participant.flunk(wi, ArgumentError, 'sorry?')
+
+    r = @dashboard.wait_for(wfid)
+
+    assert_equal 'error_intercepted', r['action']
+    assert_equal 'ArgumentError', r['error']['class']
+    assert_equal 'sorry?', r['error']['message']
+    assert_match __FILE__, r['error']['trace'][1]
+
+    assert_equal 0, @dashboard.storage_participant.size
+  end
+
+  def test_flunk_error_instance
+
+    @dashboard.register :alpha, Ruote::StorageParticipant
+
+    wfid = @dashboard.launch(Ruote.define do
+      alpha
+    end)
+
+    @dashboard.wait_for('dispatched')
+
+    assert_equal 1, @dashboard.storage_participant.size
+
+    wi = @dashboard.storage_participant.first
+
+    begin
+      raise 'nada'
+    rescue => e
+      @dashboard.storage_participant.flunk(wi, e)
+    end
+
+    r = @dashboard.wait_for(wfid)
+
+    assert_equal 'error_intercepted', r['action']
+    assert_equal 'RuntimeError', r['error']['class']
+    assert_equal 'nada', r['error']['message']
+    assert_match __FILE__, r['error']['trace'].first
+
+    assert_equal 0, @dashboard.storage_participant.size
+  end
+
+  def test_flunk_with_on_error
+
+    @dashboard.register :alpha, Ruote::StorageParticipant
+
+    wfid = @dashboard.launch(Ruote.define do
+      sequence :on_error => 'report_error' do
+        alpha
+      end
+      define 'report_error' do
+        echo 'error...'
+      end
+    end)
+
+    @dashboard.wait_for('dispatched')
+
+    assert_equal 1, @dashboard.storage_participant.size
+
+    wi = @dashboard.storage_participant.first
+
+    @dashboard.storage_participant.flunk(wi, ArgumentError, 'pure fail')
+
+    r = @dashboard.wait_for(wfid)
+
+    assert_equal 'terminated', r['action']
+    assert_equal 'error...', @tracer.to_s
+
+    assert_equal 0, @dashboard.storage_participant.size
   end
 end
 

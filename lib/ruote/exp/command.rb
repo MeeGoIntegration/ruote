@@ -1,5 +1,5 @@
 #--
-# Copyright (c) 2005-2011, John Mettraux, jmettraux@gmail.com
+# Copyright (c) 2005-2012, John Mettraux, jmettraux@gmail.com
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -30,7 +30,12 @@ module Ruote::Exp
   #
   module CommandMixin
 
+    # Field name '__command__', where one can place a command.
+    #
     F_COMMAND = '__command__'
+
+    # break_if, break_unless, rewind_if, rewind_unless, ...
+    #
     ATT_COMMANDS = %w[ break rewind reset over stop ]
 
     protected

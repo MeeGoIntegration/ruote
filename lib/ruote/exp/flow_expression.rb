@@ -1,5 +1,5 @@
 #--
-# Copyright (c) 2005-2011, John Mettraux, jmettraux@gmail.com
+# Copyright (c) 2005-2012, John Mettraux, jmettraux@gmail.com
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -52,21 +52,50 @@ module Ruote::Exp
   #
   # Each node is an expression...
   #
+  #
+  # == the states of an expression
+  #
+  # === nil
+  # the normal state
+  #
+  # === 'cancelling'
+  # the expression and its children are getting cancelled
+  #
+  # === 'dying'
+  # the expression and its children are getting killed
+  #
+  # === 'failed'
+  # the expression has finishing
+  #
+  # === 'failing'
+  # the expression just failed and it's cancelling its children
+  #
+  # === 'timing_out'
+  # the expression just timedout and it's cancelling its children
+  #
+  # === 'paused'
+  # the expression is paused, it will store downstream messages and play
+  # them only when a 'resume' message comes from upstream.
+  #
   class FlowExpression
 
     include Ruote::WithH
     include Ruote::WithMeta
 
-    require 'ruote/exp/ro_persist'
     require 'ruote/exp/ro_attributes'
-    require 'ruote/exp/ro_variables'
     require 'ruote/exp/ro_filters'
-    require 'ruote/exp/ro_vf'
+    require 'ruote/exp/ro_on_x'
+    require 'ruote/exp/ro_persist'
+    require 'ruote/exp/ro_timers'
+    require 'ruote/exp/ro_variables'
 
     COMMON_ATT_KEYS = %w[
-      if unless forget timeout on_error on_cancel on_timeout ]
+      if unless
+      forget lose flank
+      timeout timers
+      on_error on_cancel on_timeout
+    ]
 
-    attr_reader :context
     attr_reader :h
 
     h_reader :variables
@@ -80,6 +109,17 @@ module Ruote::Exp
     h_reader :on_error
     h_reader :on_cancel
     h_reader :on_timeout
+    h_reader :on_terminate
+
+    attr_reader :context
+
+    # Mostly used when the expression is returned via Ruote::Engine#ps(wfid) or
+    # Ruote::Engine#processes(). If an error occurred for this flow expression,
+    # #ps will set this error field so that it yields the ProcessError.
+    #
+    # So, for short, usually, this attribute yields nil.
+    #
+    attr_accessor :error
 
     def initialize(context, h)
 
@@ -100,13 +140,13 @@ module Ruote::Exp
       h.on_cancel ||= attribute(:on_cancel)
       h.on_error ||= attribute(:on_error)
       h.on_timeout ||= attribute(:on_timeout)
+      h.on_terminate ||= attribute(:on_terminate)
     end
 
     def h=(hash)
+
       @h = hash
-      class << h
-        include Ruote::HashDot
-      end
+      class << @h; include Ruote::HashDot; end
     end
 
     # Returns the Ruote::FlowExpressionId for this expression.
@@ -116,12 +156,22 @@ module Ruote::Exp
       Ruote::FlowExpressionId.new(h.fei)
     end
 
+    # Returns the workflow instance id of the workflow this expression
+    # belongs to.
+    #
+    def wfid
+
+      h.fei['wfid']
+    end
+
     # Returns the Ruote::FlowExpressionIf of the parent expression, or nil
     # if there is no parent expression.
     #
     def parent_id
 
-      h.parent_id ? Ruote::FlowExpressionId.new(h.parent_id) : nil
+      h.parent_id ?
+        Ruote::FlowExpressionId.new(h.parent_id) :
+        nil
     end
 
     # Fetches the parent expression, or returns nil if there is no parent
@@ -129,7 +179,34 @@ module Ruote::Exp
     #
     def parent
 
-      Ruote::Exp::FlowExpression.fetch(@context, h.parent_id)
+      h.parent_id ?
+        Ruote::Exp::FlowExpression.fetch(@context, h.parent_id) :
+        nil
+    end
+
+    # Returns the root expression of this expression.
+    #
+    # The result is an instance of Ruote::FlowExpression or nil if the
+    # parent cannot be found.
+    #
+    def root
+
+      current = @h
+      exps = @context.storage.find_expressions(h.fei['wfid'])
+
+      while current && current['parent_id']
+        current = exps.find { |e| e['fei'] == current['parent_id'] }
+      end
+
+      current ? Ruote::Exp::FlowExpression.from_h(@context, current) : nil
+    end
+
+    # Returns the fei of the root expression of this expression.
+    # The result is an instance of Ruote::FlowExpressionId.
+    #
+    def root_id
+
+      root.fei
     end
 
     # Turns this FlowExpression instance into a Hash (well, just hands back
@@ -140,9 +217,18 @@ module Ruote::Exp
       @h
     end
 
+    # Returns a one-off Ruote::Workitem instance (the applied workitem).
+    #
+    def applied_workitem
+
+      @awi ||= Ruote::Workitem.new(h.applied_workitem)
+    end
+
     # Instantiates expression back from hash.
     #
     def self.from_h(context, h)
+
+      return self.new(nil, h) unless context
 
       exp_class = context.expmap.expression_class(h['name'])
 
@@ -183,8 +269,6 @@ module Ruote::Exp
       fei = msg['fei']
       action = msg['action']
 
-      #p msg unless fei
-
       if action == 'reply' && fei['engine_id'] != context.engine_id
         #
         # the reply has to go to another engine, let's locate the
@@ -207,14 +291,26 @@ module Ruote::Exp
 
       fexp = nil
 
-      3.times do
-        fexp = fetch(context, msg['fei'])
-        break if fexp
-        sleep 0.028
+      n = context.storage.class.name.match(/Couch/) ? 3 : 1
+        #
+      n.times do |i|
+        if fexp = fetch(context, msg['fei']); break; end
+        sleep 0.028 unless i == (n - 1)
       end
-        # this retry system is only useful with ruote-couch
+        #
+        # Simplify that once ruote-couch behaves
 
-      fexp.send("do_#{action}", msg) if fexp
+      fexp.do(action, msg) if fexp
+    end
+
+    # Wraps a call to "apply", "reply", etc... Makes sure to set @msg
+    # with a deep copy of the msg before.
+    #
+    def do(action, msg)
+
+      @msg = Ruote.fulldup(msg)
+
+      send("do_#{action}", msg)
     end
 
     # Called by the worker when it has just created this FlowExpression and
@@ -222,34 +318,51 @@ module Ruote::Exp
     #
     def do_apply(msg)
 
-      @msg = Ruote.fulldup(msg)
+      unless Condition.apply?(attribute(:if), attribute(:unless))
 
-      if not Condition.apply?(attribute(:if), attribute(:unless))
+        return do_reply_to_parent(h.applied_workitem)
+      end
 
-        return reply_to_parent(h.applied_workitem)
+      pi = h.parent_id
+      reply_immediately = false
+
+      if attribute(:scope).to_s == 'true'
+
+        h.variables ||= {}
       end
 
       if attribute(:forget).to_s == 'true'
-
-        pi = h.parent_id
-        wi = Ruote.fulldup(h.applied_workitem)
 
         h.variables = compile_variables
         h.parent_id = nil
         h.forgotten = true
 
-        @context.storage.put_msg('reply', 'fei' => pi, 'workitem' => wi) if pi
-          # reply to parent immediately (if there is a parent)
+        reply_immediately = true
 
       elsif attribute(:lose).to_s == 'true'
 
         h.lost = true
+
+      elsif msg['flanking'] or (attribute(:flank).to_s == 'true')
+
+        h.flanking = true
+
+        reply_immediately = true
+      end
+
+      if reply_immediately and pi
+
+        @context.storage.put_msg(
+          'reply',
+          'fei' => pi,
+          'workitem' => Ruote.fulldup(h.applied_workitem),
+          'flanking' => h.flanking)
       end
 
       filter
 
       consider_tag
-      consider_timeout
+      consider_timers
 
       apply
     end
@@ -258,49 +371,96 @@ module Ruote::Exp
     # parent expression to take over (it will end up calling the #reply of
     # the parent expression).
     #
+    # Expression implementations are free to override this method.
+    # The common behaviour is in #do_reply_to_parent.
+    #
     def reply_to_parent(workitem, delete=true)
 
-      filter(workitem)
+      do_reply_to_parent(workitem, delete)
+    end
 
-      if h.tagname
+    # The essence of the reply_to_parent job...
+    #
+    def do_reply_to_parent(workitem, delete=true)
 
-        unset_variable(h.tagname)
+      # propagate the cancel "flavour" back, so that one can know
+      # why a branch got cancelled.
 
-        Ruote::Workitem.remove_tag(workitem, h.tagname)
-
-        @context.storage.put_msg(
-          'left_tag',
-          'tag' => h.tagname,
-          'fei' => h.fei,
-          'workitem' => workitem)
+      flavour = if @msg.nil?
+        nil
+      elsif @msg['action'] == 'cancel'
+        @msg['flavour'] || 'cancel'
+      elsif h.state.nil?
+        nil
+      else
+        @msg['flavour']
       end
 
-      if h.timeout_schedule_id && h.state != 'timing_out'
+      # deal with the timers and the schedules
 
-        @context.storage.delete_schedule(h.timeout_schedule_id)
+      %w[ timeout_schedule_id job_id ].each do |sid|
+        @context.storage.delete_schedule(h[sid]) if h[sid]
       end
+        #
+        # legacy schedule ids, to be removed for ruote 2.4.0
 
-      if h.state == 'failing' # on_error is implicit (#fail got called)
+      @context.storage.delete_schedule(h.schedule_id) if h.schedule_id
+        #
+        # time-driven exps like cron, wait and once now all use h.schedule_id
+
+      h.timers.each do |schedule_id, action|
+        @context.storage.delete_schedule(schedule_id)
+      end if h.timers
+
+      # cancel flanking expressions if any
+
+      cancel_flanks(h.state == 'dying' ? 'kill' : nil)
+
+      # trigger or vanilla reply
+
+      if h.state == 'failing' # on_error is implicit (#do_fail got called)
 
         trigger('on_error', workitem)
 
-      elsif h.state == 'cancelling' and h.on_cancel
+      elsif h.state == 'cancelling' && h.on_cancel
 
         trigger('on_cancel', workitem)
 
-      elsif h.state == 'cancelling' and h.on_re_apply
+      elsif h.state == 'cancelling' && h.on_re_apply
 
         trigger('on_re_apply', workitem)
 
-      elsif h.state == 'timing_out' and h.on_timeout
+      elsif h.state == 'timing_out' && h.on_timeout
 
         trigger('on_timeout', workitem)
 
-      elsif h.lost and h.state == nil
+      elsif h.state == nil && h.on_reply
 
+        trigger('on_reply', workitem)
+
+      elsif (h.lost || h.flanking) && h.state.nil?
+        #
         # do not reply, sit here (and wait for cancellation probably)
 
+        do_persist
+
+      elsif h.trigger && workitem['fields']["__#{h.trigger}__"]
+        #
+        # the "second take"
+
+        trigger(h.trigger, workitem)
+
       else # vanilla reply
+
+        filter(workitem) if h.state.nil?
+
+        f = h.state.nil? && attribute(:vars_to_f)
+        Ruote.set(workitem['fields'], f, h.variables) if f
+
+        workitem['sub_wf_name'] = @h.applied_workitem['sub_wf_name']
+        workitem['sub_wf_revision'] = @h.applied_workitem['sub_wf_revision']
+
+        leave_tag(workitem) if h.tagname
 
         (do_unpersist || return) if delete
           # remove expression from storage
@@ -311,14 +471,30 @@ module Ruote::Exp
             'reply',
             'fei' => h.parent_id,
             'workitem' => workitem.merge!('fei' => h.fei),
-            'updated_tree' => h.updated_tree) # nil most of the time
+            'updated_tree' => h.updated_tree, # nil most of the time
+            'flavour' => flavour)
+
         else
 
           @context.storage.put_msg(
             h.forgotten ? 'ceased' : 'terminated',
             'wfid' => h.fei['wfid'],
             'fei' => h.fei,
-            'workitem' => workitem)
+            'workitem' => workitem,
+            'variables' => h.variables,
+            'flavour' => flavour)
+
+          if h.state.nil? && h.on_terminate == 'regenerate' && ! h.forgotten
+
+            @context.storage.put_msg(
+              'regenerate',
+              'wfid' => h.fei['wfid'],
+              'tree' => h.original_tree,
+              'workitem' => workitem,
+              'variables' => h.variables,
+              'flavour' => flavour)
+              #'stash' =>
+          end
         end
       end
     end
@@ -327,20 +503,29 @@ module Ruote::Exp
     #
     def do_reply(msg)
 
-      @msg = Ruote.fulldup(msg)
-        # keeping the message, for 'retry' in collision cases
-
       workitem = msg['workitem']
       fei = workitem['fei']
 
+      removed = h.children.delete(fei)
+        # accept without any check ?
+
+      if msg['flanking']
+
+        (h.flanks ||= []) << fei
+
+        if (not removed) # then it's a timer
+
+          do_persist
+          return
+        end
+      end
+
       if ut = msg['updated_tree']
+
         ct = tree.dup
         ct.last[Ruote::FlowExpressionId.child_id(fei)] = ut
         update_tree(ct)
       end
-
-      h.children.delete(fei)
-        # accept without any check ?
 
       if h.state == 'paused'
 
@@ -378,8 +563,6 @@ module Ruote::Exp
     #
     def do_cancel(msg)
 
-      @msg = Ruote.fulldup(msg)
-
       flavour = msg['flavour']
 
       return if h.state == 'cancelling' && flavour != 'kill'
@@ -388,40 +571,51 @@ module Ruote::Exp
       return if h.state == 'failed' && flavour == 'timeout'
         # do not timeout expressions that are "in error" (failed)
 
-      @msg = Ruote.fulldup(msg)
-
       h.state = case flavour
         when 'kill' then 'dying'
         when 'timeout' then 'timing_out'
         else 'cancelling'
       end
 
-      h.applied_workitem['fields']['__timed_out__'] = [
-        h.fei, Ruote.now_to_utc_s
-      ] if h.state == 'timing_out'
+      if h.state == 'timing_out'
 
-      if h.state == 'cancelling'
+        h.applied_workitem['fields']['__timed_out__'] = [
+          h.fei, Ruote.now_to_utc_s, tree.first, compile_atts
+        ]
+
+      elsif h.state == 'cancelling'
 
         if t = msg['on_cancel']
 
           h.on_cancel = t
 
-        elsif hra = msg['re_apply']
+        elsif ra_opts = msg['re_apply']
 
-          hra = {} if hra == true
+          ra_opts = {} if ra_opts == true
+          ra_opts['tree'] ||= tree
 
-          h.on_re_apply = hra['tree'] || tree
-
-          if fs = hra['fields']
-            h.applied_workitem['fields'] = fs
-          end
-          if mfs = hra['merge_in_fields']
-            h.applied_workitem['fields'].merge!(mfs)
-          end
+          h.on_re_apply = ra_opts
         end
       end
 
       cancel(flavour)
+    end
+
+    # Emits a cancel message for each flanking expression (if any).
+    #
+    def cancel_flanks(flavour)
+
+      return unless h.flanks
+
+      h.flanks.each do |flank_fei|
+
+        @context.storage.put_msg(
+          'cancel',
+          'fei' => flank_fei,
+          'parent_id' => h.fei,
+            # indicating that this is a "cancel child", well...
+          'flavour' => flavour)
+      end
     end
 
     # This default implementation cancels all the [registered] children
@@ -441,53 +635,43 @@ module Ruote::Exp
         # if the do_persist returns false, it means it failed, implying this
         # expression is stale, let's return, thus discarding this cancel message
 
-      children.each do |cfei|
+      children.each do |child_fei|
         #
         # let's send a cancel message to each of the children
         #
         # maybe some of them are gone or have not yet been applied, anyway,
-        # the message are sent
+        # the messages are sent
 
         @context.storage.put_msg(
           'cancel',
-          'fei' => cfei,
+          'fei' => child_fei,
           'parent_id' => h.fei, # indicating that this is a "cancel child"
           'flavour' => flavour)
       end
-
-      #if ! children.find { |i| Ruote::Exp::FlowExpression.fetch(@context, i) }
-      #  #
-      #  # since none of the children could be found in the storage right now,
-      #  # it could mean that all children are already done or it could mean
-      #  # that they are not yet applied...
-      #  #
-      #  # just to be sure let's send a new cancel message to this expression
-      #  #
-      #  # it's very important, since if there is no child to cancel the parent
-      #  # the flow might get stuck here
-      #  @context.storage.put_msg(
-      #    'cancel',
-      #    'fei' => h.fei,
-      #    'flavour' => flavour)
-      #end
     end
 
     # Called when handling an on_error, will place itself in a 'failing' state
     # and cancel the children (when the reply from the children comes back,
-    # the on_reply will get triggered).
+    # the on_error will get triggered).
     #
     def do_fail(msg)
-
-      @msg = Ruote.fulldup(msg)
 
       @h['state'] = 'failing'
       @h['applied_workitem'] = msg['workitem']
 
       if h.children.size < 1
+
         reply_to_parent(@h['applied_workitem'])
+
       else
+
+        flavour = msg['immediate'] ? 'kill' : nil
+
         persist_or_raise
-        h.children.each { |i| @context.storage.put_msg('cancel', 'fei' => i) }
+
+        h.children.each do |i|
+          @context.storage.put_msg('cancel', 'fei' => i, 'flavour' => flavour)
+        end
       end
     end
 
@@ -569,75 +753,12 @@ module Ruote::Exp
     #
     def ancestor?(fei)
 
+      fei = fei.to_h if fei.respond_to?(:to_h)
+
       return false unless h.parent_id
       return true if h.parent_id == fei
 
       parent.ancestor?(fei)
-    end
-
-    # Looks up "on_error" attribute
-    #
-    def lookup_on_error
-
-      if h.on_error
-
-        self
-
-      elsif h.parent_id
-
-        par = parent
-          # :( get_parent would probably be a better name for #parent
-
-        #if par.nil? && ($DEBUG || ARGV.include?('-d'))
-        #  puts "~~"
-        #  puts "parent gone for"
-        #  puts "fei          #{Ruote.sid(h.fei)}"
-        #  puts "tree         #{tree.inspect}"
-        #  puts "replying to  #{Ruote.sid(h.parent_id)}"
-        #  puts "~~"
-        #end
-          # is sometimes helpful during debug sessions
-
-        par ? par.lookup_on_error : nil
-
-      else
-
-        nil
-      end
-    end
-
-    # Looks up parent with on_error attribute and triggers it
-    #
-    def handle_on_error(msg, error)
-
-      return false if h.state == 'failing'
-
-      oe_parent = lookup_on_error
-
-      return false unless oe_parent
-        # no parent with on_error attribute found
-
-      handler = oe_parent.on_error.to_s
-
-      return false if handler == ''
-        # empty on_error handler nullifies ancestor's on_error
-
-      workitem = msg['workitem']
-
-      workitem['fields']['__error__'] = {
-        'fei' => fei,
-        'at' => Ruote.now_to_utc_s,
-        'class' => error.class.to_s,
-        'message' => error.message,
-        'trace' => error.backtrace
-      }
-
-      @context.storage.put_msg(
-        'fail',
-        'fei' => oe_parent.h.fei,
-        'workitem' => workitem)
-
-      true # yes, error is being handled.
     end
 
     #--
@@ -648,6 +769,7 @@ module Ruote::Exp
     # if it got updated.
     #
     def tree
+
       h.updated_tree || h.original_tree
     end
 
@@ -668,6 +790,7 @@ module Ruote::Exp
     #   seq.do_persist
     #
     def update_tree(t=nil)
+
       h.updated_tree = t || Ruote.fulldup(h.original_tree)
     end
 
@@ -773,102 +896,74 @@ module Ruote::Exp
     #
     def consider_tag
 
-      if h.tagname = attribute(:tag)
+      tag = attribute(:tag)
 
-        set_variable(h.tagname, h.fei)
+      return unless tag
 
-        Ruote::Workitem.add_tag(h.applied_workitem, h.tagname)
+      h.tagname = tag
+      h.full_tagname = applied_workitem.tags.join('/')
 
-        @context.storage.put_msg(
-          'entered_tag',
-          'tag' => h.tagname,
-          'fei' => h.fei,
-          'workitem' => h.applied_workitem)
-      end
-    end
+      return if h.trigger
+        #
+        # do not consider tags when the tree is applied for an
+        # on_x trigger
 
-    # Called by do_apply. Overriden in ParticipantExpression and RefExpression.
-    #
-    def consider_timeout
+      h.full_tagname = (applied_workitem.tags + [ tag ]).join('/')
 
-      do_schedule_timeout(attribute(:timeout))
-    end
+      set_variable(h.tagname, h.fei)
+      set_variable('/' + h.full_tagname, h.fei)
 
-    # Called by consider_timeout (FlowExpression) and schedule_timeout
-    # (ParticipantExpression).
-    #
-    def do_schedule_timeout(timeout)
-
-      timeout = timeout.to_s
-
-      return if timeout.strip == ''
-
-      h.timeout_schedule_id = @context.storage.put_schedule(
-        'at',
-        h.fei,
-        timeout,
-        'action' => 'cancel',
-        'fei' => h.fei,
-        'flavour' => 'timeout')
-    end
-
-    # (Called by trigger_on_cancel & co)
-    #
-    def supplant_with(tree, opts)
-
-      # at first, nuke self
-
-      r = try_unpersist
-
-      raise(
-        "failed to remove exp to supplant "+
-        "#{Ruote.to_storage_id(h.fei)} #{tree.first}"
-      ) if r.respond_to?(:keys)
-
-      # then re-apply
-
-      if t = opts['trigger']
-        tree[1]['_triggered'] = t.to_s
-      end
+      applied_workitem.send(:add_tag, h.tagname)
 
       @context.storage.put_msg(
-        'apply',
-        { 'fei' => h.fei,
-          'parent_id' => h.parent_id,
-          'tree' => tree,
-          'workitem' => h.applied_workitem,
-          'variables' => h.variables
-        }.merge!(opts))
+        'entered_tag',
+        'tag' => h.tagname,
+        'full_tag' => h.full_tagname,
+        'fei' => h.fei,
+        'workitem' => h.applied_workitem)
     end
 
-    # 'on_{error|timeout|cancel|re_apply}' triggering
+    # Called when the expression is about to reply to its parent and wants
+    # to get rid of its tags.
     #
-    def trigger(on, workitem)
+    def leave_tag(workitem)
 
-      hon = h[on]
+      unset_variable(h.tagname)
 
-      t = hon.is_a?(String) ? [ hon, {}, [] ] : hon
+      Ruote::Workitem.new(workitem).send(:remove_tag, h.tagname)
 
-      if on == 'on_error'
+      @context.storage.put_msg(
+        'left_tag',
+        'tag' => h.tagname,
+        'full_tag' => h.full_tagname,
+        'fei' => h.fei,
+        'workitem' => workitem)
 
-        if hon == 'redo' or hon == 'retry'
+      return unless h.full_tagname # for backward compatibility
 
-          t = tree
+      r = root
 
-        elsif hon == 'undo' or hon == 'pass'
+      return unless r && r.variables # might happen
 
-          h.state = 'failed'
-          reply_to_parent(workitem)
+      r.variables.delete(h.full_tagname)
 
-          return
-        end
+      state = case h.trigger || h.state
 
-      elsif on == 'on_timeout'
+        when 'on_cancel' then 'cancelled'
+        when 'on_error' then 'failed'
+        when 'on_timeout' then 'timed out'
+        when 'on_re_apply' then nil
 
-        t = tree if hon == 'redo' or hon == 'retry'
+        when 'cancelling' then 'cancelled'
+        when 'dying' then 'killed'
+
+        else nil
       end
 
-      supplant_with(t, 'trigger' => on)
+      (r.variables['__past_tags__'] ||= []) <<
+        [ h.full_tagname, fei.sid, state, Ruote.now_to_utc_s ]
+
+      r.do_persist unless r.fei == self.fei
     end
   end
 end

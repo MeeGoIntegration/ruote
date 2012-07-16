@@ -1,5 +1,5 @@
 #--
-# Copyright (c) 2005-2011, John Mettraux, jmettraux@gmail.com
+# Copyright (c) 2005-2012, John Mettraux, jmettraux@gmail.com
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -47,14 +47,11 @@ module Ruote
 
       attr_reader :parent, :attributes, :children
 
-      def initialize(parent, name, attributes)
+      def initialize(parent, name, atts)
 
         @parent = parent
         @name = name
-        @attributes = attributes.inject({}) { |h, (k, v)|
-          h[k.gsub(/-/, '_')] = v
-          h
-        }
+        @attributes = atts.remap { |(k, v), h| h[k.gsub(/-/, '_')] = v }
         @children = []
 
         parent.children << self if parent

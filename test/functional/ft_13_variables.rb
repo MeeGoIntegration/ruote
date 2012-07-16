@@ -5,7 +5,7 @@
 # Tue Jun 23 11:16:39 JST 2009
 #
 
-require File.join(File.dirname(__FILE__), 'base')
+require File.expand_path('../base', __FILE__)
 
 
 class FtVariablesTest < Test::Unit::TestCase
@@ -17,12 +17,44 @@ class FtVariablesTest < Test::Unit::TestCase
       echo 'at:${wfid}:${expid}'
     end
 
-    #noisy
+    wfid = @dashboard.launch(pdef)
+    r = @dashboard.wait_for(wfid)
 
-    wfid = @engine.launch(pdef)
-    wait_for(wfid)
-
+    assert_equal 'terminated', r['action']
     assert_equal "at:#{wfid}:0_0", @tracer.to_s
+  end
+
+  def test_mnemo_id
+
+    pdef = Ruote.process_definition do
+      echo '>${mnemo_id}<'
+    end
+
+    wfid = @dashboard.launch(pdef)
+    r = @dashboard.wait_for(wfid)
+
+    assert_equal 'terminated', r['action']
+    assert_match /^>[a-z]+<$/, @tracer.to_s
+  end
+
+  def test_tags
+
+    pdef = Ruote.define do
+      sequence :tag => 'a' do
+        sequence :tag => 'b' do
+          sequence :tag => 'c' do
+            echo '>${tags}<'
+            echo '>${tag}<'
+            echo '>${full_tag}<'
+          end
+        end
+      end
+    end
+
+    wfid = @dashboard.launch(pdef); r = @dashboard.wait_for(wfid)
+
+    assert_equal 'terminated', r['action']
+    assert_equal [ ">[\"a\", \"b\", \"c\"]<", ">c<", ">a/b/c<" ], @tracer.to_a
   end
 
   def test_variables_event
@@ -34,8 +66,6 @@ class FtVariablesTest < Test::Unit::TestCase
         echo 'done.'
       end
     end
-
-    #noisy
 
     assert_trace('done.', pdef)
 
@@ -64,8 +94,6 @@ class FtVariablesTest < Test::Unit::TestCase
       end
     end
 
-    #noisy
-
     assert_trace(%w[ a0:b0:a0:b0 a1:b1:a0:b1 a0:b1:a0:b1 ], pdef)
   end
 
@@ -80,9 +108,7 @@ class FtVariablesTest < Test::Unit::TestCase
       end
     end
 
-    #noisy
-
-    @engine.variables['vb'] = 'b0'
+    @dashboard.variables['vb'] = 'b0'
 
     assert_trace(%w[ a0: b0:b0 done. ], pdef)
 
@@ -104,9 +130,9 @@ class FtVariablesTest < Test::Unit::TestCase
       end
     end
 
-    @engine.context.stash[:results] = []
+    @dashboard.context.stash[:results] = []
 
-    @engine.register_participant :alpha do |workitem, fexp|
+    @dashboard.register_participant :alpha do |workitem, fexp|
 
       class << fexp
         public :locate_var
@@ -117,20 +143,87 @@ class FtVariablesTest < Test::Unit::TestCase
       stash[:results] << fexp.locate_var('a').first.fei.to_storage_id
     end
 
-    #noisy
-
     assert_trace 'done.', pdef
 
-    assert_equal(nil, @engine.context.stash[:results][0])
-    assert_match(/^0||\d+_\d+$/, @engine.context.stash[:results][1])
-    assert_match(/^0\_0|\d+|\d+_\d+$/, @engine.context.stash[:results][2])
+    assert_equal(nil, @dashboard.context.stash[:results][0])
+    assert_match(/^0||\d+_\d+$/, @dashboard.context.stash[:results][1])
+    assert_match(/^0\_0|\d+|\d+_\d+$/, @dashboard.context.stash[:results][2])
+  end
+
+  def test_lookup_var
+
+    pdef = Ruote.define do
+      set 'v:v0' => 'a'
+      sequence :scope => true do
+        echo 'v0:${v:v0}'
+        set 'v:v0' => nil
+        echo 'v0:${v:v0}'
+      end
+      echo 'v0:${v:v0}'
+    end
+
+    wfid = @dashboard.launch(pdef)
+    r = @dashboard.wait_for(wfid)
+
+    assert_equal %w[ v0:a v0: v0:a ], @tracer.to_a
+  end
+
+  def test_set_var_override
+
+    pdef = Ruote.define do
+      set 'v:v0' => 'a'
+      sequence :scope => true do
+        set 'v:v0' => 'b', :over => true
+        set 'v:v1' => 'b', :over => true
+        set 'v:/v2' => 'b', :over => true
+      end
+    end
+
+    wfid = @dashboard.launch(pdef)
+    r = @dashboard.wait_for(wfid)
+
+    assert_equal(
+      { 'v0' => 'b', 'v2' => 'b' },
+      r['variables'])
+  end
+
+  def test_set_var_override_sub
+
+    pdef = Ruote.define do
+
+      set 'v:v0' => 'a'
+      set 'v:v1' => 'a'
+      set 'v:v2' => 'a'
+      set 'v:v3' => 'a'
+      sub0
+      sequence :scope => true do
+        set 'v:v4' => 'a', :over => 'sub'
+      end
+
+      define 'sub0' do
+        set 'v:v0' => 'b'
+        set 'v:v1' => 'b', :over => true
+        set 'v:v3' => 'b'
+        sequence :scope => true do
+          set 'v:v2' => 'c', :over => 'sub'
+          set 'v:v3' => 'c', :over => 'sub'
+        end
+        set 'v:/v3' => '${v:v3}'
+      end
+    end
+
+    wfid = @dashboard.launch(pdef)
+    r = @dashboard.wait_for(wfid)
+
+    assert_equal(
+      [ 'a', 'b', 'a', 'c', nil ],
+      r['variables'].values_at(*%w[ v0 v1 v2 v3 v4 ]))
   end
 
   def test_lookup_in_var
 
-    @engine.register_participant :echo_toto do |wi, fexp|
-      @tracer << fexp.lookup_variable('toto').join
-      @tracer << "\n"
+    @dashboard.register_participant :echo_toto do |wi, fexp|
+      tracer << fexp.lookup_variable('toto').join + "\n"
     end
 
     pdef = Ruote.process_definition do
@@ -146,6 +239,16 @@ class FtVariablesTest < Test::Unit::TestCase
     end
 
     assert_trace(%w[ b abC aC ], pdef)
+  end
+
+  def test_terminated_and_variables
+
+    pdef = Ruote.define {}
+
+    wfid = @engine.launch(pdef, {}, { 'a' => 'b' })
+    r = @engine.wait_for(wfid)
+
+    assert_equal({ 'a' => 'b' }, r['variables'])
   end
 end
 

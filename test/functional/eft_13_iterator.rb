@@ -5,7 +5,7 @@
 # Mon Jun 29 09:35:48 JST 2009
 #
 
-require File.join(File.dirname(__FILE__), 'base')
+require File.expand_path('../base', __FILE__)
 
 require 'ruote/participant'
 
@@ -44,7 +44,7 @@ class EftIteratorTest < Test::Unit::TestCase
       end
     end
 
-    @engine.register_participant '.*', TraceParticipant
+    @dashboard.register_participant '.*', TraceParticipant
 
     #noisy
 
@@ -59,7 +59,7 @@ class EftIteratorTest < Test::Unit::TestCase
       end
     end
 
-    @engine.register_participant '.*', TraceParticipant
+    @dashboard.register_participant '.*', TraceParticipant
 
     assert_trace(%w[ alice/0_0_0 bob/0_0_0 charly/0_0_0 ], pdef)
   end
@@ -73,7 +73,7 @@ class EftIteratorTest < Test::Unit::TestCase
       end
     end
 
-    @engine.register_participant '.*', TraceParticipant
+    @dashboard.register_participant '.*', TraceParticipant
 
     assert_trace(%w[ alice/0_1_0 bob/0_1_0 charly/0_1_0 ], pdef)
   end
@@ -88,7 +88,7 @@ class EftIteratorTest < Test::Unit::TestCase
       end
     end
 
-    @engine.register_participant '.*', TraceParticipant
+    @dashboard.register_participant '.*', TraceParticipant
 
     assert_trace(%w[ alice/0_2_0 bob/0_2_0 charly/0_2_0 ], pdef)
   end
@@ -101,8 +101,8 @@ class EftIteratorTest < Test::Unit::TestCase
       end
     end
 
-    @engine.register_participant '.*' do |workitem|
-      @tracer << "#{workitem.fields['f']}/#{workitem.fei.expid}\n"
+    @dashboard.register_participant '.*' do |workitem|
+      tracer << "#{workitem.fields['f']}/#{workitem.fei.expid}\n"
     end
 
     #noisy
@@ -124,10 +124,10 @@ class EftIteratorTest < Test::Unit::TestCase
       end
     end
 
-    #@engine.noisy = true
+    #@dashboard.noisy = true
 
-    wfid = @engine.launch(pdef)
-    @engine.wait_for(wfid)
+    wfid = @dashboard.launch(pdef)
+    @dashboard.wait_for(wfid)
 
     assert_equal %w[ a b c d e f ], @tracer.to_a
   end
@@ -143,9 +143,9 @@ class EftIteratorTest < Test::Unit::TestCase
 
   def test_break
 
-    @engine.register_participant '.*' do |workitem|
+    @dashboard.register_participant '.*' do |workitem|
 
-      @tracer << "#{workitem.participant_name}\n"
+      tracer << "#{workitem.participant_name}\n"
 
       if workitem.participant_name == 'bob'
         workitem.fields['__command__'] = [ 'break', nil ]
@@ -161,12 +161,12 @@ class EftIteratorTest < Test::Unit::TestCase
 
     stash[:rewound] = false
 
-    @engine.register_participant '.*' do |workitem|
+    @dashboard.register_participant '.*' do |workitem|
 
-      @tracer << "#{workitem.participant_name}\n"
+      tracer << "#{workitem.participant_name}\n"
 
-      if (not stash[:rewound]) and workitem.participant_name == 'bob'
-        stash[:rewound] = true
+      if (not context.stash[:rewound]) and workitem.participant_name == 'bob'
+        context.stash[:rewound] = true
         workitem.fields['__command__'] = [ 'rewind', nil ]
       end
     end
@@ -178,9 +178,9 @@ class EftIteratorTest < Test::Unit::TestCase
 
   def test_skip
 
-    @engine.register_participant '.*' do |workitem|
+    @dashboard.register_participant '.*' do |workitem|
 
-      @tracer << "#{workitem.participant_name}\n"
+      tracer << "#{workitem.participant_name}\n"
 
       if workitem.participant_name == 'alice'
         workitem.fields['__command__'] = [ 'skip', 1 ]
@@ -194,9 +194,9 @@ class EftIteratorTest < Test::Unit::TestCase
 
   def test_jump
 
-    @engine.register_participant '.*' do |workitem|
+    @dashboard.register_participant '.*' do |workitem|
 
-      @tracer << "#{workitem.participant_name}\n"
+      tracer << "#{workitem.participant_name}\n"
 
       if workitem.participant_name == 'alice'
         workitem.fields['__command__'] = [ 'jump', -1 ]
@@ -219,8 +219,8 @@ class EftIteratorTest < Test::Unit::TestCase
       end
     end
 
-    @engine.register_participant '.*' do |workitem|
-      @tracer << "#{workitem.participant_name}/#{workitem.fei.expid}\n"
+    @dashboard.register_participant '.*' do |workitem|
+      tracer << "#{workitem.participant_name}/#{workitem.fei.expid}\n"
     end
 
     #noisy
@@ -236,8 +236,8 @@ class EftIteratorTest < Test::Unit::TestCase
       end
     end
 
-    @engine.register_participant '.*' do |workitem|
-      @tracer << "#{workitem.participant_name}/#{workitem.fei.expid}\n"
+    @dashboard.register_participant '.*' do |workitem|
+      tracer << "#{workitem.participant_name}/#{workitem.fei.expid}\n"
     end
 
     #noisy
@@ -254,8 +254,8 @@ class EftIteratorTest < Test::Unit::TestCase
       end
     end
 
-    @engine.register_participant '.*' do |workitem|
-      @tracer << "#{workitem.participant_name}/#{workitem.fei.expid}\n"
+    @dashboard.register_participant '.*' do |workitem|
+      tracer << "#{workitem.participant_name}/#{workitem.fei.expid}\n"
     end
 
     #noisy
@@ -271,9 +271,9 @@ class EftIteratorTest < Test::Unit::TestCase
       end
     end
 
-    @engine.register_participant :p1 do |wi|
-      @tracer << wi.fields['f'].join(':')
-      @tracer << "\n"
+    @dashboard.register_participant :p1 do |wi|
+      tracer << wi.fields['f'].join(':')
+      tracer << "\n"
     end
 
     #noisy
@@ -289,13 +289,19 @@ class EftIteratorTest < Test::Unit::TestCase
       end
     end
 
-    @engine.register_participant '.*' do |workitem|
-      @tracer << "#{workitem.participant_name}/#{workitem.fei.expid}\n"
+    @dashboard.register_participant '.*' do |workitem|
+      tracer << "#{workitem.participant_name}/#{workitem.fei.expid}\n"
     end
 
-    #noisy
+    #@dashboard.noisy = true
 
-    assert_trace(%w[ alice:0/0_0_0 bob:1/0_0_0 charly:2/0_0_0 ], pdef)
+    wfid = @dashboard.launch(pdef)
+    r = @dashboard.wait_for(wfid)
+
+    assert_equal %w[ alice:0/0_0_0 bob:1/0_0_0 charly:2/0_0_0 ], @tracer.to_a
+
+    assert_equal 'charly', r['variables']['i']
+    assert_equal 2, r['variables']['ii']
   end
 
   def test_nested_break
@@ -337,6 +343,29 @@ class EftIteratorTest < Test::Unit::TestCase
     #noisy
 
     assert_trace %w[ 1 2 ], pdef
+  end
+
+  def test_implicit_sequence
+
+    pdef = Ruote.process_definition :name => 'test' do
+      iterator :on_val => 'alice, bob, charly', :to_var => 'v' do
+        echo '0:${v:v}'
+        echo '1:${v:v}'
+      end
+    end
+
+    #@dashboard.noisy = true
+
+    wfid = @dashboard.launch(pdef)
+    r = @dashboard.wait_for(wfid)
+
+    assert_equal(
+      %w[
+        0:alice 1:alice
+        0:bob 1:bob
+        0:charly 1:charly
+      ],
+      @tracer.to_a)
   end
 end
 

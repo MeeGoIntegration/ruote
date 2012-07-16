@@ -1,5 +1,5 @@
 #--
-# Copyright (c) 2005-2011, John Mettraux, jmettraux@gmail.com
+# Copyright (c) 2005-2012, John Mettraux, jmettraux@gmail.com
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -109,22 +109,34 @@ module Ruote
 
     # Returns the name of the workflow to which this workitem belongs, or nil.
     #
-    def wf_name
-
-      @h['wf_name']
-    end
+    def wf_name; @h['wf_name']; end
 
     alias definition_name wf_name
 
     # Returns the revision of the workflow to which this workitem belongs,
     # or nil.
     #
-    def wf_revision
-
-      @h['wf_revision']
-    end
+    def wf_revision; @h['wf_revision']; end
 
     alias definition_revision wf_revision
+
+    # Returns the name of the sub-workflow the workitem is currently in.
+    # (If it's in the main flow, it will return the name of the main flow,
+    # if that flow has a name...)
+    #
+    def sub_wf_name; @h['sub_wf_name']; end
+
+    # The equivalent of #sub_wf_name for revisions.
+    #
+    def sub_wf_revision; @h['sub_wf_revision']; end
+
+    # Used by some participants, returns the "owner" of the workitem. Mostly
+    # used when reserving workitems.
+    #
+    def owner
+
+      @h['owner']
+    end
 
     # Returns the payload, ie the fields hash.
     #
@@ -224,6 +236,32 @@ module Ruote
       Ruote.set(@h['fields'], key, value)
     end
 
+    # Shortcut for #lookup(key)
+    #
+    #   workitem.fields['customer']['city']
+    #     # or
+    #   workitem.lookup('customer.city')
+    #     # or
+    #   workitem['customer.city']
+    #
+    def [](key)
+
+      lookup(key.to_s)
+    end
+
+    # Shortcut for #set_field(key, value)
+    #
+    #   workitem.fields['customer']['city'] = 'Toronto'
+    #     # or
+    #   workitem.set_field('customer.city', 'Toronto')
+    #     # or
+    #   workitem['customer.city'] = 'Toronto'
+    #
+    def []=(key, value)
+
+      set_field(key.to_s, value)
+    end
+
     # Shortcut for wi.fields['__timed_out__']
     #
     def timed_out
@@ -302,6 +340,14 @@ module Ruote
       @h['fields'][key] || (@h['fields']['params'] || {})[key]
     end
 
+    # Shortcut to the temporary/trailing fields
+    #
+    # http://groups.google.com/group/openwferu-users/browse_thread/thread/981dba6204f31ccc
+    #
+    def t
+      @h['fields']['t'] ||= {}
+    end
+
     # (advanced)
     #
     # Shortcut for wi.fields['__command__']
@@ -309,7 +355,7 @@ module Ruote
     # __command__ is read by the 'cursor' and the 'iterator' expressions
     # when a workitem reaches it (apply and reply).
     #
-    def commmand
+    def command
 
       @h['fields']['__command__']
     end
@@ -337,27 +383,14 @@ module Ruote
       @h['fields']['__tags__'] || []
     end
 
-    # Used by FlowExpression when entering a tag.
+    # How many times was this workitem re_dispatched ?
     #
-    def self.add_tag(hworkitem, tag)
-
-      (hworkitem['fields']['__tags__'] ||= []) << tag
-    end
-
-    # Used by FlowExpression when leaving a tag.
+    # It's used by LocalParticipant re_dispatch mostly, or by participant
+    # which poll a resource and re_dispatch after a while.
     #
-    def self.remove_tag(hworkitem, tag)
+    def re_dispatch_count
 
-      # it's a bit convoluted... trying to cope with potential inconsistencies
-      #
-      # normally, it should only be a tags.pop(), but since user have
-      # access to the workitem and its fields... better be safe than sorry
-
-      tags = (hworkitem['fields']['__tags__'] || [])
-
-      if index = tags.rindex(tag)
-        tags.delete_at(index)
-      end
+      @h['re_dispatch_count'] || 0
     end
 
     # Encodes this workitem as JSON. If pretty is set to true, will output
@@ -380,6 +413,33 @@ module Ruote
       ) unless h.is_a?(Hash)
 
       self.new(h)
+    end
+
+    protected
+
+    # Used by FlowExpression when entering a tag.
+    #
+    def add_tag(tag)
+
+      (@h['fields']['__tags__'] ||= []) << tag
+    end
+
+    # Used by FlowExpression when leaving a tag.
+    #
+    def remove_tag(tag)
+
+      # it's a bit convoluted... trying to cope with potential inconsistencies
+      #
+      # normally, it should only be a tags.pop(), but since user have
+      # access to the workitem and its fields... better be safe than sorry
+
+      tags = (@h['fields']['__tags__'] || [])
+
+      if index = tags.rindex(tag)
+        tags.delete_at(index)
+      end
+
+      @h['fields']['__left_tag__'] = tag
     end
   end
 end

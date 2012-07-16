@@ -1,5 +1,5 @@
 #--
-# Copyright (c) 2005-2011, John Mettraux, jmettraux@gmail.com
+# Copyright (c) 2005-2012, John Mettraux, jmettraux@gmail.com
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -56,17 +56,16 @@ module Ruote::Exp
 
       var, prefix = split_prefix(var, prefix)
 
-      return @context.storage.get_engine_variable(var) \
-        if prefix.length >= 2
+      if prefix == '//'
+        return @context.storage.get_engine_variable(var)
+      end
 
-      return parent.lookup_variable(var, prefix) \
-        if h.parent_id && prefix.length >= 1
+      if prefix == '/' && par = parent
+        return par.lookup_variable(var, prefix)
+      end
 
-      if h.variables
-
-        val = Ruote.lookup(h.variables, var)
-
-        return val if val != nil
+      if h.variables and Ruote.has_key?(h.variables, var)
+        return Ruote.lookup(h.variables, var)
       end
 
       if h.parent_id && h.parent_id['engine_id'] == @context.engine_id
@@ -91,23 +90,23 @@ module Ruote::Exp
     # Sets a variable to a given value.
     # (will set at the appropriate level).
     #
-    def set_variable(var, val)
+    def set_variable(var, val, override=false)
 
-      fexp, v = locate_var(var)
+      fexp, v = locate_set_var(var, override) || locate_var(var)
 
       fexp.un_set_variable(:set, v, val, (fexp.h.fei != h.fei)) if fexp
     end
 
     # Unbinds a variables.
     #
-    def unset_variable(var)
+    def unset_variable(var, override=false)
 
-      fexp, v = locate_var(var)
+      fexp, v = locate_set_var(var, override) || locate_var(var)
 
       fexp.un_set_variable(:unset, v, nil, (fexp.h.fei != h.fei)) if fexp
     end
 
-    # TODO : redoc rewrite needed
+    # TODO : rdoc rewrite needed
     #
     # This method is mostly used by the worker when looking up
     # a process name or participant name bound under a variable.
@@ -129,7 +128,7 @@ module Ruote::Exp
     #
     def un_set_variable(op, var, val, should_persist)
 
-      if op == :set
+      result = if op == :set
         Ruote.set(h.variables, var, val)
       else # op == :unset
         Ruote.unset(h.variables, var)
@@ -144,9 +143,11 @@ module Ruote::Exp
 
         @context.storage.put_msg("variable_#{op}", 'var' => var, 'fei' => h.fei)
       end
+
+      result
     end
 
-    VAR_PREFIX_REGEX = /^(\/*)/
+    VAR_PREFIX_REGEX = /^(\/{0,2})\/*(.+)$/
 
     # Used by lookup_variable and set_variable to extract the
     # prefix in a variable name
@@ -154,10 +155,9 @@ module Ruote::Exp
     def split_prefix(var, prefix)
 
       if prefix.nil?
-        var = var.to_s
-        m = VAR_PREFIX_REGEX.match(var)
-        prefix = m ? m[1][0, 2] : ''
-        var = var[prefix.length..-1]
+        m = VAR_PREFIX_REGEX.match(var.to_s)
+        prefix = m[1]
+        var = m[2]
       end
 
       [ var, prefix ]
@@ -166,23 +166,84 @@ module Ruote::Exp
     # Returns the flow expression that owns a variable (or the one
     # that should own it) and the var without its potential / prefixes.
     #
+    # In other words:
+    #
+    #   [ owner, varname_without_slashes ]
+    #
+    # When a location for the variable could not be found, it returns:
+    #
+    #   [ nil, nil ]
+    #
     def locate_var(var, prefix=nil)
 
       var, prefix = split_prefix(var, prefix)
 
-      return nil if prefix.length >= 2 # engine variable
-      return parent.locate_var(var, prefix) if prefix.length == 1 && h.parent_id
+      if prefix == '//' # engine variable
+        nil
+      elsif prefix == '/' && par = parent # process variable
+        par.locate_var(var, prefix)
+      elsif h.variables # it's here
+        [ self, var ]
+      elsif par = parent # look in the parent expression
+        par.locate_var(var, prefix)
+      else # uprooted var lookup...
+        [ nil, nil ]
+      end
+    end
 
-      # no prefix...
+    # When used with override = true(ish), will try to locate the binding site
+    # for the variable and return it.
+    #
+    # If override is set to 'sub', will stop before digging into the parent
+    # subprocess.
+    #
+    def locate_set_var(var, override)
 
-      return [ self, var ] if h.variables
+      hk = h.variables && h.variables.has_key?(var)
 
-      if par = parent
-        return parent.locate_var(var, prefix) rescue nil
+      if ( ! override) || var.match(/^\//)
+        false
+      elsif override == 'sub' && DefineExpression.is_definition?(tree) && ! hk
+        false
+      elsif hk
+        [ self, var ]
+      elsif par = parent
+        par.locate_set_var(var, override)
+      else
+        false
+      end
+    end
+
+    def set_v(key, value, opts={})
+
+      if opts[:unset]
+        unset_variable(key, opts[:override])
+      else
+        set_variable(key, value, opts[:override])
+      end
+    end
+
+    def set_f(key, value, opts={})
+
+      if opts[:unset]
+        Ruote.unset(h.applied_workitem['fields'], key)
+      else
+        Ruote.set(h.applied_workitem['fields'], key, value)
+      end
+    end
+
+    PREFIX_REGEX = /^([^:]+):(.+)$/
+    F_PREFIX_REGEX = /^f/
+
+    def set_vf(key, value, opts={})
+
+      field, key = if m = PREFIX_REGEX.match(key)
+        [ F_PREFIX_REGEX.match(m[1]), m[2] ]
+      else
+        [ true, key ]
       end
 
-      #raise "uprooted var lookup, something went wrong"
-      [ nil, nil ]
+      field ? set_f(key, value, opts) : set_v(key, value, opts)
     end
   end
 end

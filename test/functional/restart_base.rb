@@ -12,7 +12,7 @@ module RestartBase
   end
 
   def teardown
-    @engine.shutdown
+    @dashboard.shutdown
     @storage.purge!
   end
 
@@ -20,15 +20,13 @@ module RestartBase
 
   def start_new_engine
 
-    @storage = determine_storage(
-      's_logger' => [ 'ruote/log/test_logger', 'Ruote::TestLogger' ],
-      :persistent => true)
+    @storage = determine_storage(:persistent => true)
 
-    @engine = Ruote::Engine.new(Ruote::Worker.new(@storage))
+    @dashboard = Ruote::Engine.new(Ruote::Worker.new(@storage))
 
     #@tracer.clear
 
-    @engine.add_service('tracer', @tracer)
+    @dashboard.add_service('tracer', @tracer)
   end
 end
 

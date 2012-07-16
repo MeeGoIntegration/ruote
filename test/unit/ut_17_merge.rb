@@ -5,19 +5,21 @@
 # Fri May 13 14:12:52 JST 2011
 #
 
-require File.join(File.dirname(__FILE__), '..', 'test_helper.rb')
+require File.expand_path('../../test_helper', __FILE__)
 
 module Ruote; end
+require 'ruote/exp/flow_expression'
 require 'ruote/exp/merge'
 
 
 class MergeTest < Test::Unit::TestCase
 
-  class Merger
+  class Merger < Ruote::Exp::FlowExpression
     include Ruote::Exp::MergeMixin
-
-    def expand_atts
-      nil
+    def initialize
+    end
+    def tree
+      [ 'nada', {}, [] ]
     end
   end
 
@@ -75,13 +77,13 @@ class MergeTest < Test::Unit::TestCase
     assert_equal(
       { 'fields' => {
           'stack' => [ { 'a' => 0, 'b' => -1 }, { 'a' => 1 } ],
-          'stack_attributes' => nil
+          'stack_attributes' => {}
       } },
       Merger.new.merge_workitems(new_workitems, 'stack'))
     assert_equal(
       { 'fields' => {
           'stack' => [ { 'a' => 1 }, { 'a' => 0, 'b' => -1 } ],
-          'stack_attributes' => nil
+          'stack_attributes' => {}
       } },
       Merger.new.merge_workitems(new_workitems.reverse, 'stack'))
   end
@@ -99,15 +101,55 @@ class MergeTest < Test::Unit::TestCase
   def test_union
 
     workitems = [
-      new_workitem('a' => 0, 'b' => [ 'x' ], 'c' => { 'aa' => 'bb' }),
-      new_workitem('a' => 1, 'b' => [ 'y' ], 'c' => { 'cc' => 'dd' })
+      new_workitem('a' => 0, 'b' => [ 'x', 'y' ], 'c' => { 'aa' => 'bb' }),
+      new_workitem('a' => 1, 'b' => [ 'y', 'z' ], 'c' => { 'cc' => 'dd' })
     ]
 
     assert_equal(
       { 'fields' => {
-        'a' => 1, 'b' => [ 'x', 'y' ], 'c' => { 'aa' => 'bb', 'cc' => 'dd' }
+        'a' => 1,
+        'b' => [ 'x', 'y', 'z' ],
+        'c' => { 'aa' => 'bb', 'cc' => 'dd' }
       } },
       Merger.new.merge_workitems(workitems, 'union'))
+  end
+
+  def test_concat
+
+    workitems = [
+      new_workitem('a' => 0, 'b' => [ 'x', 'y' ], 'c' => { 'aa' => 'bb' }),
+      new_workitem('a' => 1, 'b' => [ 'y', 'z' ], 'c' => { 'cc' => 'dd' })
+    ]
+
+    assert_equal(
+      { 'fields' => {
+        'a' => 1,
+        'b' => [ 'x', 'y', 'y', 'z' ],
+        'c' => { 'aa' => 'bb', 'cc' => 'dd' }
+      } },
+      Merger.new.merge_workitems(workitems, 'concat'))
+  end
+
+  def test_deep
+
+    workitems = [
+      new_workitem(
+        'a' => 0,
+        'b' => [ 'x', 'y' ],
+        'c' => { 'aa' => 'bb', 'cc' => { 'a' => 'b' } }),
+      new_workitem(
+        'a' => 1,
+        'b' => [ 'y', 'z' ],
+        'c' => { 'dd' => 'ee', 'cc' => { 'c' => 'd' } })
+    ]
+
+    assert_equal(
+      { 'fields' => {
+        'a' => 1,
+        'b' => [ 'x', 'y', 'y', 'z' ],
+        'c' => { 'aa' => 'bb', 'cc' => { 'a' => 'b', 'c' => 'd' }, 'dd' => 'ee' }
+      } },
+      Merger.new.merge_workitems(workitems, 'deep'))
   end
 end
 

@@ -1,5 +1,5 @@
 #--
-# Copyright (c) 2005-2011, John Mettraux, jmettraux@gmail.com
+# Copyright (c) 2005-2012, John Mettraux, jmettraux@gmail.com
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -308,8 +308,8 @@ module Ruote::Exp
         ref = c[1]['ref']
         tag = c[1]['tag']
 
-        ref = @context.dollar_sub.s(ref, self, workitem) if ref
-        tag = @context.dollar_sub.s(tag, self, workitem) if tag
+        ref = dsub(ref, workitem) if ref
+        tag = dsub(tag, workitem) if tag
 
         next if exp_name != arg && ref != arg && tag != arg
 

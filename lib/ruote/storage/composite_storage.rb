@@ -1,5 +1,5 @@
 #--
-# Copyright (c) 2005-2011, John Mettraux, jmettraux@gmail.com
+# Copyright (c) 2005-2012, John Mettraux, jmettraux@gmail.com
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -33,8 +33,8 @@ module Ruote
   #
   #   opts = {}
   #
-  #   engine =
-  #     Ruote::Engine.new(
+  #   dashboard =
+  #     Ruote::Dashboard.new(
   #       Ruote::Worker.new(
   #         Ruote::CompositeStorage.new(
   #           Ruote::FsStorage.new('ruote_work', opts),
@@ -62,16 +62,16 @@ module Ruote
 
       if type == nil
         define_method(method_name) do |*args|
-          storage(args.first['type']).send(method_name, *args)
+          storage_for(args.first['type']).send(method_name, *args)
         end
       elsif type.is_a?(Fixnum)
         define_method(method_name) do |*args|
-          storage(args[type]).send(method_name, *args)
+          storage_for(args[type]).send(method_name, *args)
         end
       else
         type = type.to_s
         define_method(method_name) do |*args|
-          storage(type).send(method_name, *args)
+          storage_for(type).send(method_name, *args)
         end
       end
     end
@@ -87,7 +87,7 @@ module Ruote
     delegate :empty?, 0
 
     delegate :put_msg, :msgs
-    delegate :get_msgs, :msgs
+    #delegate :get_msgs, :msgs
     delegate :put_schedule, :schedules
     delegate :get_schedules, :schedules
     delegate :delete_schedule, :schedules
@@ -97,8 +97,25 @@ module Ruote
     delegate :get_engine_variable, :variables
     delegate :put_engine_variable, :variables
 
-    #def add_type (type)
-    #end
+    # Let's not use .delegate for get_msgs since this some storage may
+    # accept a worker_name argument.
+    #
+    def get_msgs(worker_name='worker')
+
+      sto = storage_for('msgs')
+
+      if sto.method(:get_msgs).arity == 0
+        sto.get_msgs
+      else
+        sto.get_msgs(worker_name)
+      end
+    end
+
+    # The dilemma for the CompositeStorage with add_type is "to which
+    # real storage should the new type get added". The solution: do nothing.
+    #
+    def add_type(type)
+    end
 
     TYPES = %w[
       variables
@@ -112,7 +129,7 @@ module Ruote
 
     protected
 
-    def storage(type)
+    def storage_for(type)
 
       @storages[type] || @default_storage
     end

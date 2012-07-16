@@ -1,5 +1,5 @@
 #--
-# Copyright (c) 2005-2011, John Mettraux, jmettraux@gmail.com
+# Copyright (c) 2005-2012, John Mettraux, jmettraux@gmail.com
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -63,7 +63,7 @@ module Ruote::Exp
   # The 'on' attribute can be replaced by a :time or a :branches attribute.
   #
   #   pdef = Ruote.process_definition :name => 'test' do
-  #     iterator :times => '3'
+  #     iterator :times => '3' do
   #       participant 'accounting'
   #     end
   #   end
@@ -78,16 +78,41 @@ module Ruote::Exp
   #     end
   #   end
   #
+  # === variables and scope
+  #
+  # Starting with ruote 2.3.0, the iterator doesn't create a new scope for
+  # its variables, it uses the current scope.
+  #
+  # The old behaviour can be obtained by setting :scope => true, as in:
+  #
+  #     iterator :on => [ 1, 2, 3 ], :to_v => 'x', :scope => true do
+  #       # ...
+  #     end
+  #
+  # A corollary: by default, the variables set by the iterator or within it
+  # stick in the current scope...
+  #
   #
   # == the classical case
   #
-  # Iterating over a workitem field :
+  # Iterating over a workitem field:
   #
   #   pdef = Ruote.process_definition :name => 'test' do
   #     iterator :on_field => 'customers', :to_f => 'customer'
   #       participant '${f:customer}'
   #     end
   #   end
+  #
+  # It's equivalent to:
+  #
+  #   pdef = Ruote.process_definition :name => 'test' do
+  #     iterator :on => '$f:customers', :to_f => 'customer'
+  #       participant '${f:customer}'
+  #     end
+  #   end
+  #
+  # "$f:customers" yields the actual array, whereas "${f:customers}"
+  # yields the string representation of the array.
   #
   #
   # == break/rewind/continue/skip/jump
@@ -191,7 +216,7 @@ module Ruote::Exp
       h.to_v, h.to_f = determine_tos
       h.position = -1
 
-      h.to_v = 'i' if h.to_v == nil && h.to_f == nil
+      h.to_v = 'i' unless h.to_v or h.to_f
 
       move_on
     end
@@ -200,34 +225,43 @@ module Ruote::Exp
 
     def move_on(workitem=h.applied_workitem)
 
-      h.position += 1
+      current_position = h.position
+      h.position = 0 if h.position == -1
+
+      child_id = workitem['fei'] == h.fei ?
+        0 : Ruote::FlowExpressionId.new(workitem['fei']).child_id + 1
 
       com, arg = get_command(workitem)
 
-      return reply_to_parent(workitem) if com == 'break'
-
       case com
+
+        when 'break' then return reply_to_parent(workitem)
+
         when 'rewind', 'continue' then h.position = 0
-        when 'skip' then h.position += arg
+        when 'skip' then h.position += (arg + 1)
         when 'jump' then h.position = arg
+
+        else
+          h.position = h.position + 1 if child_id >= tree_children.size
       end
 
       h.position = h.list.length + h.position if h.position < 0
+
+      return apply_child(child_id, workitem) if h.position == current_position
 
       val = h.list[h.position]
 
       return reply_to_parent(workitem) if val == nil
 
-      (h.variables ||= {})['ii'] = h.position
+      set_variable('ii', h.position)
 
       if h.to_v
-        h.variables[h.to_v] = val
+        set_variable(h.to_v, val)
       else #if h.to_f
         workitem['fields'][h.to_f] = val
       end
 
       apply_child(0, workitem)
-        # persist is done in there
     end
   end
 end

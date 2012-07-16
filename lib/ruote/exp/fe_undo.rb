@@ -1,5 +1,5 @@
 #--
-# Copyright (c) 2005-2011, John Mettraux, jmettraux@gmail.com
+# Copyright (c) 2005-2012, John Mettraux, jmettraux@gmail.com
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -44,16 +44,52 @@ module Ruote::Exp
   #
   #   cancel :ref => 'invoicing_stage'
   #
+  # == a bit shorter
+  #
+  # It's OK to shorten
+  #
+  #   cancel :ref => 'invoicing_stage'
+  #
+  # to
+  #
+  #   cancel 'invoicing_stage'
+  #
+  # == kill
+  #
+  #   kill :ref => 'invoicing stage'
+  #
+  # will cancel the target expression and bypass any on_cancel handler set for
+  # it.
+  #
+  #   concurrence do
+  #     sequence :tag => 'x', :on_cancel => 'y' do
+  #       # ...
+  #     end
+  #     sequence do
+  #       # ...
+  #       kill 'x'
+  #     end
+  #   end
+  #
+  # In this example the :on_cancel => 'y' will get ignored if kill 'x' kicks
+  # in.
+  #
   class UndoExpression < FlowExpression
 
-    names :undo, :cancel
+    names :undo, :cancel, :kill
 
     def apply
 
       ref = attribute(:ref) || attribute_text
-      tag = ref ? lookup_variable(ref) : nil
+      ref = ref.strip if ref
 
-      @context.storage.put_msg('cancel', 'fei' => tag) if Ruote.is_a_fei?(tag)
+      tag = (ref && ref != '') ? lookup_variable(ref) : nil
+
+      @context.storage.put_msg(
+        'cancel',
+        'fei' => tag,
+        'flavour' => self.name == 'kill' ? 'kill' : nil
+      ) if Ruote.is_a_fei?(tag)
 
       reply_to_parent(h.applied_workitem)
     end

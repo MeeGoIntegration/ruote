@@ -5,7 +5,7 @@
 # Mon Jun 29 18:34:02 JST 2009
 #
 
-require File.join(File.dirname(__FILE__), 'base')
+require File.expand_path('../base', __FILE__)
 
 require 'ruote/part/no_op_participant'
 
@@ -147,10 +147,10 @@ class EftCursorTest < Test::Unit::TestCase
       end
     end
 
-    @engine.register_participant :alpha do |workitem|
+    @dashboard.register_participant :alpha do |workitem|
       workitem.fields['counter'] += 1
       workitem.fields['rewind'] = workitem.fields['counter'] < 5
-      @tracer << "a\n"
+      tracer << "a\n"
     end
 
     #noisy
@@ -169,17 +169,17 @@ class EftCursorTest < Test::Unit::TestCase
       end
     end
 
-    @engine.register_participant :author do |workitem|
-      @tracer << "a\n"
-      stash[:count] ||= 0
-      stash[:count] += 1
+    @dashboard.register_participant :author do |workitem|
+      tracer << "a\n"
+      context.stash[:count] ||= 0
+      context.stash[:count] += 1
     end
-    @engine.register_participant :reviewer do |workitem|
-      @tracer << "r\n"
-      workitem.fields['not_ok'] = (stash[:count] < 3)
+    @dashboard.register_participant :reviewer do |workitem|
+      tracer << "r\n"
+      workitem.fields['not_ok'] = (context.stash[:count] < 3)
     end
-    @engine.register_participant :publisher do |workitem|
-      @tracer << "p\n"
+    @dashboard.register_participant :publisher do |workitem|
+      tracer << "p\n"
     end
 
     #noisy
@@ -202,7 +202,7 @@ class EftCursorTest < Test::Unit::TestCase
 
     #noisy
 
-    wfid = @engine.launch(pdef)
+    wfid = @dashboard.launch(pdef)
 
     wait_for(14)
 
@@ -226,11 +226,11 @@ class EftCursorTest < Test::Unit::TestCase
       end
     end
 
-    @engine.register_participant :alpha, Ruote::NoOpParticipant
+    @dashboard.register_participant :alpha, Ruote::NoOpParticipant
 
     #noisy
 
-    wfid = @engine.launch(pdef)
+    wfid = @dashboard.launch(pdef)
 
     wait_for(:alpha)
     wait_for(wfid)
@@ -238,7 +238,7 @@ class EftCursorTest < Test::Unit::TestCase
     #p @tracer.to_s
     assert_equal %w[ a a a ], @tracer.to_a[0, 3]
 
-    assert_nil @engine.process(wfid)
+    assert_nil @dashboard.process(wfid)
   end
 
   def test_nested_break
@@ -319,7 +319,7 @@ class EftCursorTest < Test::Unit::TestCase
 
     #noisy
 
-    @engine.register do
+    @dashboard.register do
       alpha EftCursorTest::Alpha
       bravo EftCursorTest::Bravo
     end
@@ -335,13 +335,13 @@ class EftCursorTest < Test::Unit::TestCase
       end
     end
 
-    #@engine.noisy = true
+    #@dashboard.noisy = true
 
-    wfid = @engine.launch(pdef)
+    wfid = @dashboard.launch(pdef)
 
-    @engine.wait_for(9)
+    @dashboard.wait_for(9)
 
-    assert_not_nil @engine.process(wfid)
+    assert_not_nil @dashboard.process(wfid)
   end
 
   class Charly
@@ -371,7 +371,7 @@ class EftCursorTest < Test::Unit::TestCase
 
     #noisy
 
-    @engine.register do
+    @dashboard.register do
       charly EftCursorTest::Charly, 'command' => [ 'jump', 'delta' ]
       catchall Ruote::NoOpParticipant
     end
@@ -383,7 +383,7 @@ class EftCursorTest < Test::Unit::TestCase
 
     #noisy
 
-    @engine.register do
+    @dashboard.register do
       charly EftCursorTest::Charly, 'command' => 'jump delta'
       catchall Ruote::NoOpParticipant
     end
@@ -395,7 +395,7 @@ class EftCursorTest < Test::Unit::TestCase
 
     #noisy
 
-    @engine.register do
+    @dashboard.register do
       charly EftCursorTest::Charly, 'command' => 'jump to delta'
       catchall Ruote::NoOpParticipant
     end
@@ -413,19 +413,19 @@ class EftCursorTest < Test::Unit::TestCase
       end
     end
 
-    @engine.register { catchall }
+    @dashboard.register { catchall }
 
-    #@engine.noisy = true
+    #@dashboard.noisy = true
 
-    wfid = @engine.launch(pdef)
-    @engine.wait_for(:alpha)
+    wfid = @dashboard.launch(pdef)
+    @dashboard.wait_for(:alpha)
 
-    assert_nil @engine.storage_participant.first.fields['toto']
+    assert_nil @dashboard.storage_participant.first.fields['toto']
 
-    @engine.storage_participant.proceed(@engine.storage_participant.first)
-    @engine.wait_for(:alpha)
+    @dashboard.storage_participant.proceed(@dashboard.storage_participant.first)
+    @dashboard.wait_for(:alpha)
 
-    assert_nil @engine.storage_participant.first.fields['toto']
+    assert_nil @dashboard.storage_participant.first.fields['toto']
   end
 
   def test_reset_if
@@ -438,19 +438,19 @@ class EftCursorTest < Test::Unit::TestCase
       end
     end
 
-    @engine.register { catchall }
+    @dashboard.register { catchall }
 
-    #@engine.noisy = true
+    #@dashboard.noisy = true
 
-    wfid = @engine.launch(pdef)
-    @engine.wait_for(:alpha)
+    wfid = @dashboard.launch(pdef)
+    @dashboard.wait_for(:alpha)
 
-    assert_nil @engine.storage_participant.first.fields['toto']
+    assert_nil @dashboard.storage_participant.first.fields['toto']
 
-    @engine.storage_participant.proceed(@engine.storage_participant.first)
-    @engine.wait_for(:alpha)
+    @dashboard.storage_participant.proceed(@dashboard.storage_participant.first)
+    @dashboard.wait_for(:alpha)
 
-    assert_nil @engine.storage_participant.first.fields['toto']
+    assert_nil @dashboard.storage_participant.first.fields['toto']
   end
 end
 

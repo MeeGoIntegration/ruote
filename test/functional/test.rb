@@ -5,7 +5,7 @@
 # since Mon Oct  9 22:19:44 JST 2006
 #
 
-def l (t)
+def l(t)
 
   if ARGV.include?('--split')
 
@@ -17,7 +17,9 @@ def l (t)
     es = es.nil? ? 66 : es.to_s.to_i
 
     exit(es) if es != 0
+
   else
+
     load(t)
   end
 end
@@ -32,6 +34,8 @@ unless RUBY_PLATFORM.match(/mswin|mingw/)
   Dir.glob(File.join(File.dirname(__FILE__), 'ct_*.rb')).sort.each { |t| l(t) }
     # concurrence/collision tests, tests about 2+ instances of ruote colliding
 end
+
+l(File.expand_path('../storage.rb', __FILE__))
 
 Dir.glob(File.join(File.dirname(__FILE__), 'ft_*.rb')).sort.each { |t| l(t) }
   # functional tests targetting features rather than expressions

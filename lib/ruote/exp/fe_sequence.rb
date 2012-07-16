@@ -1,5 +1,5 @@
 #--
-# Copyright (c) 2005-2011, John Mettraux, jmettraux@gmail.com
+# Copyright (c) 2005-2012, John Mettraux, jmettraux@gmail.com
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -34,11 +34,47 @@ module Ruote::Exp
   #     participant 'charly'
   #   end
   #
+  #
+  # == using 'let'
+  #
+  # 'let' behaves like a sequence, but the children have their own variable
+  # scope.
+  #
+  #   pdef = Ruote.process_definition do
+  #     set 'v:var' => 'val'
+  #     echo "out:${v:var}"
+  #     let do
+  #       set 'v:var' => 'val1'
+  #       echo "in:${v:var}"
+  #     end
+  #     echo "out:${v:var}"
+  #   end
+  #
+  # # => out:val, in:val1, out:val
+  #
+  #
+  # == as a 'case' statement
+  #
+  #   let do
+  #     define 'published' do
+  #       do_this
+  #     end
+  #     define 'reviewed' do
+  #       do_that
+  #     end
+  #     subprocess '${case}'
+  #   end
+  #
+  # Subprocesses 'published' and 'reviewed' are bound in a local scope,
+  # that gets discarded when the let exits.
+  #
   class SequenceExpression < FlowExpression
 
-    names :sequence
+    names :sequence, :let
 
     def apply
+
+      h.variables ||= {} if name == 'let'
 
       reply(h.applied_workitem)
     end

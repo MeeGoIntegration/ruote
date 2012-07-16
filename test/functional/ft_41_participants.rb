@@ -5,7 +5,7 @@
 # Mon Jun 14 12:02:53 JST 2010
 #
 
-require File.join(File.dirname(__FILE__), 'base')
+require File.expand_path('../base', __FILE__)
 
 require 'ruote/part/local_participant'
 
@@ -34,11 +34,11 @@ class FtParticipantsTest < Test::Unit::TestCase
 
   def test_participant_without_initialize
 
-    @engine.register_participant :alpha, MyParticipant
+    @dashboard.register_participant :alpha, MyParticipant
 
     #noisy
 
-    wfid = @engine.launch(Ruote.process_definition do
+    wfid = @dashboard.launch(Ruote.process_definition do
       alpha
     end)
 
@@ -49,11 +49,11 @@ class FtParticipantsTest < Test::Unit::TestCase
 
   def test_participant_with_initialize
 
-    @engine.register_participant :bravo, MyMessageParticipant, 'message' => 'hi'
+    @dashboard.register_participant :bravo, MyMessageParticipant, 'message' => 'hi'
 
     #noisy
 
-    wfid = @engine.launch(Ruote.process_definition do
+    wfid = @dashboard.launch(Ruote.process_definition do
       bravo
     end)
 
@@ -70,22 +70,23 @@ class FtParticipantsTest < Test::Unit::TestCase
     end
     def on_reply(wi)
       @context.tracer << wi.fields['hello'] + "\n"
-      @context.tracer << applied_workitem(wi.fei).fields['hello'] + "\n"
-      @context.tracer << workitem(wi.fei).fields['hello']
+      @context.tracer << applied_workitem.fields['hello'] + "\n"
+      @context.tracer << fetch_workitem(fei).fields['hello'] + "\n"
+      @context.tracer << workitem.fields['hello']
     end
   end
 
   def test_workitem_method
 
-    @engine.register 'alpha', MyOtherParticipant
+    @dashboard.register 'alpha', MyOtherParticipant
 
-    #noisy
+    #@dashboard.noisy = true
 
-    wfid = @engine.launch(Ruote.define { alpha }, 'hello' => 'world')
+    wfid = @dashboard.launch(Ruote.define { alpha }, 'hello' => 'world')
 
-    @engine.wait_for(wfid)
+    @dashboard.wait_for(wfid)
 
-    assert_equal %w[ kitty world world ], @tracer.to_a
+    assert_equal %w[ kitty world world kitty ], @tracer.to_a
   end
 end
 

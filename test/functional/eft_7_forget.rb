@@ -5,7 +5,7 @@
 # Sun Jun 14 13:33:17 JST 2009
 #
 
-require File.join(File.dirname(__FILE__), 'base')
+require File.expand_path('../base', __FILE__)
 
 
 class EftForgetTest < Test::Unit::TestCase
@@ -22,13 +22,13 @@ class EftForgetTest < Test::Unit::TestCase
       end
     end
 
-    @engine.register_participant :alpha do
-      @tracer << "alpha\n"
+    @dashboard.register_participant :alpha do
+      tracer << "alpha\n"
     end
 
     #noisy
 
-    wfid = @engine.launch(pdef)
+    wfid = @dashboard.launch(pdef)
 
     wait_for(:alpha)
     wait_for(:alpha)
@@ -42,20 +42,28 @@ class EftForgetTest < Test::Unit::TestCase
     assert_equal 1, logger.log.select { |e| e['action'] == 'terminated' }.size
   end
 
-  #def test_variables
-  #  pdef = Ruote.process_definition do
-  #    set :var => 'a', :value => 0
-  #    concurrence do
-  #      set :var => 'a', :value => 1
-  #      forget do
-  #        echo '0_${v:a}'
-  #      end
-  #      echo '1_${v:a}'
-  #    end
-  #    echo '2_${v:a}'
-  #  end
-  #  noisy
-  #  assert_trace %w[ 1_1 0_0 2_1 ], pdef
-  #end
+  def test_multi
+
+    pdef = Ruote.define do
+      forget do
+        alpha
+        bravo
+      end
+      charly
+    end
+
+    @dashboard.register_participant '.+' do |wi|
+      context.tracer << wi.participant_name + "\n"
+    end
+
+    #@dashboard.noisy = true
+
+    wfid = @dashboard.launch(pdef)
+
+    @dashboard.wait_for(:charly)
+    @dashboard.wait_for(3)
+
+    assert_equal %w[ alpha bravo charly ], @tracer.to_a.sort
+  end
 end
 

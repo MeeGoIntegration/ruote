@@ -1,5 +1,5 @@
 #--
-# Copyright (c) 2005-2011, John Mettraux, jmettraux@gmail.com
+# Copyright (c) 2005-2012, John Mettraux, jmettraux@gmail.com
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -29,12 +29,12 @@ module Exp
 end
 end
 
-require 'ruote/exp/flowexpression'
+require 'ruote/exp/flow_expression'
 
 
 exppath = File.join(File.dirname(__FILE__), '..', 'exp')
 
-Dir.new(exppath).entries.each do |pa|
+Dir.new(exppath).entries.sort.each do |pa|
   require(File.join('ruote', 'exp', pa)) if pa.match(/^fe_.*\.rb$/)
 end
 

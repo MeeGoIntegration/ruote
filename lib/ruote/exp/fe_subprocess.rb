@@ -1,5 +1,5 @@
 #--
-# Copyright (c) 2005-2011, John Mettraux, jmettraux@gmail.com
+# Copyright (c) 2005-2012, John Mettraux, jmettraux@gmail.com
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -183,7 +183,13 @@ module Ruote::Exp
 
       pos, subtree = Ruote.lookup_subprocess(self, ref)
 
-      vars = compile_atts
+      fs, vs = compile_atts.partition { |k, v| k.match(/^f(ield)?:./) }
+
+      fields = h.applied_workitem['fields']
+      fs.each { |k, v| Ruote.set(fields, k.split(':', 2).last, v) }
+
+      vars = Hash[vs.collect { |k, v| [ k.split(':', 2).last, v ] }]
+
       vars.merge!('tree' => tree_children.first)
         # NOTE : we're taking the first child here...
 

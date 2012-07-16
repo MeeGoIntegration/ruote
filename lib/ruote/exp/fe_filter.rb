@@ -1,5 +1,5 @@
 #--
-# Copyright (c) 2005-2011, John Mettraux, jmettraux@gmail.com
+# Copyright (c) 2005-2012, John Mettraux, jmettraux@gmail.com
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -168,6 +168,13 @@ module Ruote::Exp
   #
   #   filter 'x', :empty => true
   #
+  # === 'is'
+  #
+  # Checks if a field holds the given value.
+  #
+  #   filter 'x', :is => true
+  #   filter 'x', :is => [ 'a', 2, 3 ]
+  #
   # === 'in'
   #
   # Checks if a value is in a given set of values.
@@ -188,6 +195,15 @@ module Ruote::Exp
   #
   #   filter 'x', :has => "x"
   #   filter 'x', :has => "abraham, bob, charly"
+  #
+  # === 'includes'
+  #
+  # Checks if an array includes a given value. Works with Hash values as well.
+  #
+  #   filter 'x', :includes => 1
+  #
+  # Whereas 'has' accepts multiple values, 'includes' only accepts one (like
+  # Ruby's Array#include?).
   #
   # === 'valid'
   #
@@ -404,6 +420,34 @@ module Ruote::Exp
   #     { 'field' => 'A', 'delete' => true } ]
   #   # out :  { 'x' => 'a', 'y' => 'a' })
   #
+  # === 'take' and 'discard'
+  #
+  # (doesn't work well with the filter expression, it works better with
+  # filter as an attribute)
+  #
+  # Those two only make sense in out filters. One should use one or the other in
+  # a filter, but not both. It's probably better to use them at the bottom of
+  # the filters (last positions), because they switch the applied workitem
+  # (apply time) with the current workitem (reply time).
+  #
+  # 'take' means "the fields to consider are the one in the applied workitem
+  # plus the ones from the new workitem listed here".
+  #
+  # 'discard' means "the fields to consider are the the ones of the applied
+  # workitem plus all the ones from the new workitem except those listed here".
+  #
+  #   subprocess 'list_products', :filter => { :out => [
+  #     { 'field' => 'products', 'take' => true },
+  #     { 'field' => 'point_of_contact', 'take' => true }
+  #   ] }
+  #     # whatever the fields set by 'list_products', only 'products' and
+  #     # 'point_of_contact' make it through
+  #
+  # Saying :discard => true means "completely ignore any workitem field set
+  # by this expression".
+  #
+  #   subprocess 'review_document', :discard => true
+  #
   #
   # == short forms
   #
@@ -453,13 +497,42 @@ module Ruote::Exp
   # The 'restore' operation makes lots of sense for the :filter attribute
   # though.
   #
+  #
+  # == filtering with rules in a block
+  #
+  # This filter
+  #
+  #   filter :in => [
+  #     { :field => 'x', :type => 'string' },
+  #     { :field => 'y', :type => 'number' }
+  #   ]
+  #
+  # can be rewritten as
+  #
+  #   filter do
+  #     field 'x', :type => 'string'
+  #     field 'y', :type => 'number'
+  #   end
+  #
+  # The field names can be passed directly as head of each rule :
+  #
+  #   filter do
+  #     x :type => 'string'
+  #     y :type => 'number'
+  #   end
+  #
   class FilterExpression < FlowExpression
 
     names :filter
 
     def apply
 
-      filter = referenced_filter || complete_filter || one_line_filter
+      h.applied_workitem['fields'].delete('__result__')
+        #
+        # get rid of __result__
+
+      filter =
+        referenced_filter || complete_filter || one_line_filter || block_filter
 
       record = filter.first.delete('record') rescue nil
       flush = filter.first.delete('flush') rescue nil
@@ -503,6 +576,50 @@ module Ruote::Exp
 
     protected
 
+    # Filter is passed in a block (which is not evaluted as a ruote branch
+    # but immediately translated into a filter.
+    #
+    #   pdef = Ruote.process_definition do
+    #     filter do
+    #       field 'x', :type => 'string'
+    #       field 'y', :type => 'number'
+    #     end
+    #   end
+    #
+    # Note : 'or' is OK
+    #
+    #   pdef = Ruote.process_definition do
+    #     filter do
+    #       field 'x', :type => 'string'
+    #       _or
+    #       field 'y', :type => 'number'
+    #     end
+    #   end
+    #
+    def block_filter
+
+      return nil if tree.last.empty?
+
+      tree.last.collect { |line|
+
+        next 'or' if line.first == 'or'
+
+        rule = line[1].remap { |(k, v), h|
+          if v == nil
+            h['field'] = k
+          else
+            h[k] = v
+          end
+        }
+
+        rule['field'] ||= line.first
+
+        rule
+      }
+    end
+
+    # Filter is somewhere else (process variable or workitem field)
+    #
     def referenced_filter
 
       prefix, key = attribute_text.split(':')
@@ -519,6 +636,15 @@ module Ruote::Exp
       filter
     end
 
+    # Filter is passed with an :in attribute.
+    #
+    #   Ruote.process_definition do
+    #     filter :in => [
+    #       { :field => 'x', :type => 'string' },
+    #       { :field => 'y', :type => 'number' }
+    #     ]
+    #   end
+    #
     def complete_filter
 
       return nil if attribute_text != ''
@@ -526,15 +652,25 @@ module Ruote::Exp
       attribute(:in)
     end
 
+    # Filter thanks to the attributes of the expression.
+    #
+    #   pdef = Ruote.process_definition do
+    #     filter 'x', :type => 'string', :record => true
+    #     filter 'y', :type => 'number', :record => true
+    #   end
+    #
     def one_line_filter
 
-      [ attributes.inject({}) { |h, (k, v)|
+      if (attributes.keys - COMMON_ATT_KEYS - %w[ ref original_ref ]).empty?
+        return nil
+      end
+
+      [ attributes.remap { |(k, v), h|
         if v.nil?
           h['field'] = k
         else
           h[k] = v
         end
-        h
       } ]
     end
   end

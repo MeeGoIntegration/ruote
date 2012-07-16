@@ -1,5 +1,5 @@
 #--
-# Copyright (c) 2005-2011, John Mettraux, jmettraux@gmail.com
+# Copyright (c) 2005-2012, John Mettraux, jmettraux@gmail.com
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -108,6 +108,7 @@ module Ruote
 
     hash.delete('~')
     hash.delete('~~')
+    hash.delete('~~~')
       # remove the 'originals'
 
     if deviations.empty?
@@ -159,11 +160,9 @@ module Ruote
 
         # now only keep the keys that match our regexp
 
-        keys.inject([]) { |a, k|
-          if m = fl.match(k)
-            a << [ k, Ruote.lookup(@hash, k), m[1..-1] ]
-          end
-          a
+        keys.each_with_object([]) { |k, a|
+          m = fl.match(k)
+          a << [ k, Ruote.lookup(@hash, k), m[1..-1] ] if m
         }
 
       elsif fl.is_a?(String) and PIPE_SPLIT.match(fl)
@@ -335,6 +334,30 @@ module Ruote
     alias _restore_from _restore
     alias _rs _restore
 
+    def _take(field, value, matches, m, v)
+
+      unless @hash.has_key?('~~~')
+
+        @hash['~~~'] = @hash.keys.select { |k|
+          ! k.match(/^\~+$/)
+        }.each_with_object({}) { |k, h|
+          h[k] = @hash.delete(k)
+        }
+
+        @hash.merge!(@hash['~~'])
+        @hash.merge!(@hash['~~~']) if m == 'discard' && v != 'all'
+      end
+
+      if m == 'take'
+        @hash[field] = @hash['~~~'][field]
+      elsif v != 'all'
+        @hash.delete(field)
+      end
+
+      nil
+    end
+    alias _discard _take
+
     def _size(field, value, matches, m, v)
 
       v = v.is_a?(String) ? v.split(',').collect { |i| i.to_i } : Array(v)
@@ -378,6 +401,15 @@ module Ruote
       end
     end
     alias _h _has
+
+    def _includes(field, value, matches, m, v)
+
+      case value
+        when Array then value.include?(v)
+        when Hash then value.values.include?(v)
+        else false
+      end
+    end
 
     def _type(field, value, matches, m, v)
 
@@ -450,6 +482,11 @@ module Ruote
       value.is_a?(String) ? value.match(v) != nil : false
     end
     alias _sm _smatch
+
+    def _is(field, value, matches, m, v)
+
+      value == v
+    end
 
     def _valid(field, value, matches, m, v)
 

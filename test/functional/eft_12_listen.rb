@@ -5,7 +5,7 @@
 # Fri Jun 19 15:26:33 JST 2009
 #
 
-require File.join(File.dirname(__FILE__), 'base')
+require File.expand_path('../base', __FILE__)
 
 
 class EftListenTest < Test::Unit::TestCase
@@ -27,17 +27,18 @@ class EftListenTest < Test::Unit::TestCase
 
     #noisy
 
-    @engine.register_participant :alpha do
-      @tracer << "alpha\n"
+    @dashboard.register_participant :alpha do
+      tracer << "alpha\n"
     end
 
-    wfid = @engine.launch(pdef)
+    wfid = @dashboard.launch(pdef)
     wait_for(wfid)
 
     assert_equal %w[ 1 alpha ], @tracer.to_a.sort
 
     assert_equal(
-      0, @engine.context.storage.get('variables', 'trackers')['trackers'].size)
+      0,
+      @dashboard.context.storage.get('variables', 'trackers')['trackers'].size)
   end
 
   def test_listen_with_child
@@ -54,24 +55,21 @@ class EftListenTest < Test::Unit::TestCase
       end
     end
 
-    @engine.register_participant :alpha do
-      @tracer << "a\n"
+    @dashboard.register_participant :alpha do
+      tracer << "a\n"
     end
-    @engine.register_participant :bravo do |workitem|
-      @tracer << "#{workitem.fei.wfid}|#{workitem.fei.subid}"
-      @tracer << "\n"
+    @dashboard.register_participant :bravo do |workitem|
+      tracer << "#{workitem.fei.wfid}|#{workitem.fei.subid}"
+      tracer << "\n"
     end
 
     #noisy
 
-    wfid = @engine.launch(pdef)
+    wfid = @dashboard.launch(pdef)
 
     wait_for(:bravo)
     wait_for(:bravo)
     wait_for(3)
-
-    #sleep 0.001
-    #p @tracer.to_s
 
     a = @tracer.to_a
     assert_equal 2, a.select { |e| e == 'a' }.size
@@ -79,13 +77,14 @@ class EftListenTest < Test::Unit::TestCase
     a = (a - [ 'a', 'a' ]).sort
     assert_equal 2, a.uniq.size
 
-    ps = @engine.process(wfid)
+    ps = @dashboard.process(wfid)
 
     #assert_equal 3, ps.expressions.size
     assert_equal 0, ps.errors.size
 
     assert_equal(
-      1, @engine.context.storage.get('variables', 'trackers')['trackers'].size)
+      1,
+      @dashboard.context.storage.get('variables', 'trackers')['trackers'].size)
   end
 
   def test_upon
@@ -108,16 +107,16 @@ class EftListenTest < Test::Unit::TestCase
 
     #noisy
 
-    @engine.register_participant :alpha do |workitem|
-      @tracer << "alpha\n"
+    @dashboard.register_participant :alpha do |workitem|
+      tracer << "alpha\n"
       workitem.fields['seen'] = 'yes'
     end
-    @engine.register_participant :bravo do |workitem|
-      @tracer << "bravo:#{workitem.fields['seen']}\n"
+    @dashboard.register_participant :bravo do |workitem|
+      tracer << "bravo:#{workitem.fields['seen']}\n"
     end
 
-    wfid = @engine.launch(pdef)
-    @engine.wait_for(wfid)
+    wfid = @dashboard.launch(pdef)
+    @dashboard.wait_for(wfid)
 
     assert_equal %w[ alpha bravo: bravo:yes ], @tracer.to_a.sort
   end
@@ -140,13 +139,13 @@ class EftListenTest < Test::Unit::TestCase
 
     #noisy
 
-    @engine.register_participant :alpha do |wi|
-      @tracer << "alpha\n"
+    @dashboard.register_participant :alpha do |wi|
+      tracer << "alpha\n"
       wi.fields['name'] = 'William Mandella'
     end
-    @engine.register_participant :bravo do |wi|
-      @tracer << "name:#{wi.fields['name']} "
-      @tracer << "other:#{wi.fields['other']}\n"
+    @dashboard.register_participant :bravo do |wi|
+      tracer << "name:#{wi.fields['name']} "
+      tracer << "other:#{wi.fields['other']}\n"
     end
 
     assert_trace("alpha\nname:William Mandella other:nothing", pdef)
@@ -168,25 +167,25 @@ class EftListenTest < Test::Unit::TestCase
       end
     end
 
-    #noisy
+    #@dashboard.noisy = true
 
     stash[:count] = 0
 
-    @engine.register_participant :alpha do |wi|
-      @tracer << "alpha\n"
-      wi.fields['who'] = 'toto' if stash[:count] > 0
-      stash[:count] += 1
+    @dashboard.register_participant :alpha do |wi|
+      tracer << "alpha\n"
+      wi.fields['who'] = 'toto' if context.stash[:count] > 0
+      context.stash[:count] += 1
     end
 
-    wfid = @engine.launch(pdef)
+    wfid = @dashboard.launch(pdef)
 
     wait_for(wfid) # ceased
 
     assert_equal %w[ alpha alpha toto ].join("\n"), @tracer.to_s
-    assert_equal 3, @engine.process(wfid).expressions.size
+    assert_equal 3, @dashboard.process(wfid).expressions.size
 
     assert_not_nil(
-      @engine.context.logger.log.find { |l| l['action'] == 'ceased' })
+      @dashboard.context.logger.log.find { |l| l['action'] == 'ceased' })
   end
 
   def test_listen_cancel
@@ -195,19 +194,19 @@ class EftListenTest < Test::Unit::TestCase
       listen :to => 'alpha'
     end
 
-    wfid = @engine.launch(pdef)
+    wfid = @dashboard.launch(pdef)
 
     wait_for(2)
 
     assert_equal(
-      1, @engine.context.storage.get('variables', 'trackers')['trackers'].size)
+      1, @dashboard.context.storage.get('variables', 'trackers')['trackers'].size)
 
-    @engine.cancel_process(wfid)
+    @dashboard.cancel_process(wfid)
 
     wait_for(wfid)
 
     assert_equal(
-      0, @engine.context.storage.get('variables', 'trackers')['trackers'].size)
+      0, @dashboard.context.storage.get('variables', 'trackers')['trackers'].size)
   end
 
   def test_cross
@@ -225,14 +224,14 @@ class EftListenTest < Test::Unit::TestCase
       end
     end
 
-    @engine.register_participant :alpha do
+    @dashboard.register_participant :alpha do
       # nothing
     end
 
     #noisy
 
-    lwfid = @engine.launch(listening)
-    ewfid = @engine.launch(emitting)
+    lwfid = @dashboard.launch(listening)
+    ewfid = @dashboard.launch(emitting)
 
     wait_for(lwfid, ewfid)
 
@@ -255,18 +254,18 @@ class EftListenTest < Test::Unit::TestCase
       end
     end
 
-    @engine.register_participant :alpha do
+    @dashboard.register_participant :alpha do
       # nothing
     end
 
-    lwfid = @engine.launch(listening)
-    ewfid = @engine.launch(emitting)
+    lwfid = @dashboard.launch(listening)
+    ewfid = @dashboard.launch(emitting)
 
     wait_for(ewfid)
 
     assert_equal("edone.", @tracer.to_s)
 
-    ps = @engine.process(lwfid)
+    ps = @dashboard.process(lwfid)
     assert_equal(3, ps.expressions.size)
   end
 
@@ -291,8 +290,8 @@ class EftListenTest < Test::Unit::TestCase
 
     #noisy
 
-    lwfid = @engine.launch(listening)
-    ewfid = @engine.launch(emitting)
+    lwfid = @dashboard.launch(listening)
+    ewfid = @dashboard.launch(emitting)
 
     wait_for(ewfid)
 
@@ -328,9 +327,9 @@ class EftListenTest < Test::Unit::TestCase
       end
     end
 
-    wfid = @engine.launch(pdef)
+    wfid = @dashboard.launch(pdef)
 
-    @engine.wait_for(wfid)
+    @dashboard.wait_for(wfid)
 
     assert_equal %w[ milestone stone ], @tracer.to_a
   end
@@ -339,7 +338,7 @@ class EftListenTest < Test::Unit::TestCase
 
   def test_listen_to_errors
 
-    @engine.context['ruby_eval_allowed'] = true
+    @dashboard.context['ruby_eval_allowed'] = true
 
     pdef = Ruote.define do
       concurrence :count => 1 do
@@ -352,13 +351,13 @@ class EftListenTest < Test::Unit::TestCase
       end
     end
 
-    #@engine.noisy = true
+    #@dashboard.noisy = true
 
-    wfid = @engine.launch(pdef)
+    wfid = @dashboard.launch(pdef)
 
-    @engine.wait_for(wfid)
+    @dashboard.wait_for(wfid)
 
-    @engine.wait_for(3)
+    @dashboard.wait_for(3)
       # give it some time (steps) to launch the listen block
 
     assert_equal "error:unknown participant or subprocess 'nemo'", @tracer.to_s
@@ -377,19 +376,19 @@ class EftListenTest < Test::Unit::TestCase
       end
     end
 
-    #@engine.noisy = true
+    #@dashboard.noisy = true
 
-    wfid = @engine.launch(pdef)
-    @engine.wait_for(wfid)
+    wfid = @dashboard.launch(pdef)
+    @dashboard.wait_for(wfid)
 
     assert_equal '', @tracer.to_s
   end
 
   def test_listen_does_not_work_for_errors_in_other_processes
 
-    #@engine.noisy = true
+    #@dashboard.noisy = true
 
-    wfid0 = @engine.launch(Ruote.define do
+    wfid0 = @dashboard.launch(Ruote.define do
       listen :to => :errors do
         echo 'error intercepted'
       end
@@ -397,11 +396,11 @@ class EftListenTest < Test::Unit::TestCase
 
     sleep 0.700
 
-    wfid1 = @engine.launch(Ruote.define do
+    wfid1 = @dashboard.launch(Ruote.define do
       nemo
     end)
 
-    @engine.wait_for(wfid1)
+    @dashboard.wait_for(wfid1)
 
     sleep 0.350
       # just to be sure the 'listen' doesn't trigger
@@ -428,12 +427,12 @@ class EftListenTest < Test::Unit::TestCase
       end
     end
 
-    #@engine.noisy = true
+    #@dashboard.noisy = true
 
-    wfid = @engine.launch(pdef)
+    wfid = @dashboard.launch(pdef)
 
     #sleep 1.000
-    4.times { @engine.wait_for(wfid) } # error, error, ceased, ceased
+    4.times { @dashboard.wait_for(wfid) } # error, error, ceased, ceased
 
     assert_equal(
       true,
@@ -443,7 +442,7 @@ class EftListenTest < Test::Unit::TestCase
 
   def test_listen_error_message
 
-    @engine.context['ruby_eval_allowed'] = true
+    @dashboard.context['ruby_eval_allowed'] = true
 
     pdef = Ruote.define do
       concurrence do
@@ -462,11 +461,11 @@ class EftListenTest < Test::Unit::TestCase
       end
     end
 
-    #@engine.noisy = true
+    #@dashboard.noisy = true
 
-    wfid = @engine.launch(pdef)
+    wfid = @dashboard.launch(pdef)
 
-    4.times { @engine.wait_for(wfid) } # error, error, ceased, ceased
+    4.times { @dashboard.wait_for(wfid) } # error, error, ceased, ceased
 
     assert_equal "nemo error 0_0_2_0\nnada error 0_0_3_0", @tracer.to_s
   end
@@ -487,12 +486,12 @@ class EftListenTest < Test::Unit::TestCase
       end
     end
 
-    #@engine.noisy = true
+    #@dashboard.noisy = true
 
-    wfid = @engine.launch(pdef)
+    wfid = @dashboard.launch(pdef)
 
     #sleep 1.000
-    4.times { @engine.wait_for(wfid) } # error, error, ceased, ceased
+    4.times { @dashboard.wait_for(wfid) } # error, error, ceased, ceased
 
     assert_equal "that error 0_0_1_0\nthat error 0_0_2_0", @tracer.to_s
   end

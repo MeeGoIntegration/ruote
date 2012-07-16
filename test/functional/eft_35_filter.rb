@@ -5,7 +5,7 @@
 # Mon Jan 31 14:45:09 JST 2011
 #
 
-require File.join(File.dirname(__FILE__), 'base')
+require File.expand_path('../base', __FILE__)
 
 
 class EftFilterTest < Test::Unit::TestCase
@@ -13,23 +13,29 @@ class EftFilterTest < Test::Unit::TestCase
 
   def assert_terminates(pdef, fields, result=nil)
 
-    wfid = @engine.launch(pdef, fields)
-    r = @engine.wait_for(wfid)
+    wfid = @dashboard.launch(pdef, fields)
+    r = @dashboard.wait_for(wfid)
 
     assert_equal 'terminated', r['action']
-    assert_equal(result, r['workitem']['fields']) if result
+
+    fields = r['workitem']['fields']
+    fields.delete('__result__')
+
+    assert_equal(result, fields) if result
   end
 
   def assert_does_not_validate(pdef, fields={})
 
-    wfid = @engine.launch(pdef, fields)
-    r = @engine.wait_for(wfid)
+    wfid = @dashboard.launch(pdef, fields)
+    r = @dashboard.wait_for(wfid)
 
-    err = @engine.errors.first
+    err = @dashboard.errors.first
 
     assert_equal 'error_intercepted', r['action']
     assert_match /ValidationError/, err.message
     assert_equal Array, err.deviations.class
+
+    #p @dashboard.ps(wfid)
   end
 
   #
@@ -39,6 +45,15 @@ class EftFilterTest < Test::Unit::TestCase
 
     pdef = Ruote.process_definition do
       filter 'x', :type => 'string'
+    end
+
+    assert_terminates(pdef, 'x' => 'nada')
+  end
+
+  def test_filter_single_rule__drop_if
+
+    pdef = Ruote.process_definition do
+      filter 'x', :type => 'string', :if => true
     end
 
     assert_terminates(pdef, 'x' => 'nada')
@@ -267,6 +282,142 @@ class EftFilterTest < Test::Unit::TestCase
         ],
         'x' => 1
       })
+  end
+
+  def test_filter_and_block
+
+    pdef = Ruote.process_definition do
+      filter do
+        field 'x', :type => 'string'
+        field 'y', :type => 'number'
+      end
+    end
+
+    #@dashboard.noisy = true
+
+    assert_terminates(pdef, 'x' => 's', 'y' => 2)
+    assert_does_not_validate(pdef, 'x' => 's', 'y' => 's')
+  end
+
+  def test_filter_and_block__radial
+
+    pdef = %{
+      define
+        filter
+          f x, type: 'string'
+          f y, type: 'number'
+    }
+
+    #@dashboard.noisy = true
+
+    assert_terminates(pdef, 'x' => 's', 'y' => 2)
+    assert_does_not_validate(pdef, 'x' => 's', 'y' => 's')
+  end
+
+  def test_filter_and_block__field_name_is_expname
+
+    pdef = %{
+      define
+        filter
+          x type: 'string'
+          y type: 'number'
+    }
+
+    #@dashboard.noisy = true
+
+    assert_terminates(pdef, 'x' => 's', 'y' => 2)
+    assert_does_not_validate(pdef, 'x' => 's', 'y' => 's')
+  end
+
+  def test_filter_and_block__collision_with_if
+
+    pdef = %{
+      define
+        filter if: true
+          x type: 'string'
+          y type: 'number'
+    }
+
+    #@dashboard.noisy = true
+
+    assert_terminates(pdef, 'x' => 's', 'y' => 2)
+    assert_does_not_validate(pdef, 'x' => 's', 'y' => 's')
+  end
+
+  def test_filter_block_and_or
+
+    pdef = Ruote.process_definition do
+      filter do
+        field 'x', :type => 'string'
+        _or
+        field 'x', :type => 'number'
+      end
+    end
+
+    #@dashboard.noisy = true
+
+    assert_terminates(pdef, 'x' => 's')
+    assert_terminates(pdef, 'x' => 5)
+    assert_does_not_validate(pdef, 'x' => true)
+  end
+
+  def test_filter_block_and_or__radial
+
+    pdef = %{
+      define
+        filter
+          x type: 'string'
+          or
+          x type: 'number'
+    }
+
+    #@dashboard.noisy = true
+
+    assert_terminates(pdef, 'x' => 's')
+    assert_terminates(pdef, 'x' => 5)
+    assert_does_not_validate(pdef, 'x' => true)
+  end
+
+  def test_cancel_filter_in_error
+
+    #@dashboard.noisy = true
+
+    pdef = Ruote.define do
+      filter :in => [ { :field => 'x', :type => :number } ]
+    end
+
+    wfid = @dashboard.launch(pdef)
+
+    @dashboard.wait_for(wfid)
+
+    assert_equal 1, @dashboard.ps(wfid).errors.size
+
+    @dashboard.cancel(wfid)
+
+    @dashboard.wait_for('terminated')
+
+    assert_nil @dashboard.ps(wfid)
+  end
+
+  def test_cancel_filter_out_error
+
+    #@dashboard.noisy = true
+
+    pdef = Ruote.define do
+      filter :out => [ { :field => 'x', :type => :number } ]
+    end
+
+    wfid = @dashboard.launch(pdef)
+
+    @dashboard.wait_for(wfid)
+
+    assert_equal 1, @dashboard.ps(wfid).errors.size
+
+    @dashboard.cancel(wfid)
+
+    @dashboard.wait_for('terminated')
+
+    assert_nil @dashboard.ps(wfid)
   end
 end
 

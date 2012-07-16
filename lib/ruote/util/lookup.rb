@@ -1,5 +1,5 @@
 #--
-# Copyright (c) 2005-2011, John Mettraux, jmettraux@gmail.com
+# Copyright (c) 2005-2012, John Mettraux, jmettraux@gmail.com
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -29,7 +29,7 @@ module Ruote
   #
   #   p Ruote.lookup(h, 'a.b.1') # => 3
   #
-  def Ruote.lookup(collection, key, container_lookup=false)
+  def self.lookup(collection, key, container_lookup=false)
 
     return collection if key == '.'
 
@@ -44,13 +44,34 @@ module Ruote
     lookup(value, rest, container_lookup)
   end
 
+  #   h = { 'a' => { 'b' => [ 1, 3, 4 ] } }
+  #
+  #   p Ruote.lookup(h, 'a.b.1') # => true
+  #
+  def self.has_key?(collection, key)
+
+    return collection if key == '.'
+
+    key, rest = pop_key(key)
+
+    return has_key?(fetch(collection, key), rest) if rest.any?
+
+    if collection.respond_to?(:has_key?)
+      collection.has_key?(key)
+    elsif collection.respond_to?(:[])
+      key.to_i < collection.size
+    else
+      false
+    end
+  end
+
   #   h = { 'customer' => { 'name' => 'alpha' } }
   #
   #   Ruote.set(h, 'customer.name', 'bravo')
   #
   #   h #=> { 'customer' => { 'name' => 'bravo' } }
   #
-  def Ruote.set(collection, key, value)
+  def self.set(collection, key, value)
 
     k, c = lookup(collection, key, true)
 
@@ -68,7 +89,7 @@ module Ruote
   #   h # => { 'customer' => { 'name' => 'alpha' } }
   #   r # => '1st'
   #
-  def Ruote.unset(collection, key)
+  def self.unset(collection, key)
 
     k, c = lookup(collection, key, true)
 
@@ -83,6 +104,16 @@ module Ruote
     end
   end
 
+  # Given a hash and a key, deletes all the entries with that key, in child
+  # hashes too.
+  #
+  def self.delete_all(h, key)
+
+    h.delete(key)
+
+    h.each { |k, v| delete_all(v, key) if v.is_a?(Hash) }
+  end
+
   protected # well...
 
   # Pops the first key in a path key.
@@ -92,19 +123,18 @@ module Ruote
   #
   # (note the narrowing to an int that happens)
   #
-  def Ruote.pop_key(key)
+  def self.pop_key(key)
 
     ks = key.is_a?(String) ? key.split('.') : key
 
     [ narrow_key(ks.first), ks[1..-1] ]
   end
 
-  # Attempts at turning a key into an integer, if it fails returns the
-  # original key.
+  # If the key holds an integer returns it, else return the key as is.
   #
-  def Ruote.narrow_key(key)
+  def self.narrow_key(key)
 
-    Integer(key) rescue key
+    key.match(/^-?\d+$/) ? key.to_i : key
   end
 
   # Given a collection and a key returns the corresponding value
@@ -113,7 +143,7 @@ module Ruote
   #   Ruote.fetch({ '1' => 13 }, 1) # => 13
   #   Ruote.fetch({ 1 => 13 }, 1) # => 13
   #
-  def Ruote.fetch(collection, key)
+  def self.fetch(collection, key)
 
     value = (collection[key] rescue nil)
 

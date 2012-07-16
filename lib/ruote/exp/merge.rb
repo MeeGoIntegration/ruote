@@ -1,5 +1,5 @@
 #--
-# Copyright (c) 2005-2011, John Mettraux, jmettraux@gmail.com
+# Copyright (c) 2005-2012, John Mettraux, jmettraux@gmail.com
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -37,8 +37,6 @@ module Ruote::Exp
     #
     def merge_workitems(workitems, merge_type)
 
-      rworkitems = workitems.reverse
-
       workitems.inject(nil) do |t, wi|
         merge_workitem(workitems.index(wi), t, wi, merge_type)
       end
@@ -48,11 +46,17 @@ module Ruote::Exp
     #
     # If type is 'override', the source will prevail and be returned.
     #
-    # If type is 'mix', the source fields will be merge into the target fields.
+    # If type is 'mix', the source fields will be merged into the target fields.
     #
     # If type is 'isolate', the source fields will be placed in a separte field
     # in the target workitem. The name of this field is the child_id of the
     # source workitem (a string from '0' to '99999' and beyond)
+    #
+    # The 'concat' type merges hashes and concats arrays. The 'union' type
+    # behaves much like 'concat', but it makes sure to remove duplicates.
+    #
+    # Warning: 'union' will remove duplicates that were present _before_ the
+    # merge.
     #
     def merge_workitem(index, target, source, merge_type)
 
@@ -71,7 +75,7 @@ module Ruote::Exp
           when 'isolate'
             source['fields'] = { index.to_s => source['fields'] }
 
-          #when 'union'
+          #when 'union', 'concat'
              # do nothing
         end
 
@@ -88,13 +92,13 @@ module Ruote::Exp
           when 'stack'
 
             target['fields']['stack'] << source['fields']
-            target['fields']['stack_attributes'] = expand_atts
+            target['fields']['stack_attributes'] = compile_atts
 
           when 'isolate'
 
             target['fields'][index.to_s] = source['fields']
 
-          when 'union'
+          when 'union', 'concat', 'deep'
 
             source['fields'].each do |k, sv|
 
@@ -102,8 +106,9 @@ module Ruote::Exp
 
               if sv.is_a?(Array) and tv.is_a?(Array)
                 tv.concat(sv)
+                tv.uniq! if merge_type == 'union'
               elsif sv.is_a?(Hash) and tv.is_a?(Hash)
-                tv.merge!(sv)
+                merge_type == 'deep' ? deep_merge!(tv, sv) : tv.merge!(sv)
               else
                 target['fields'][k] = sv
               end
@@ -111,6 +116,17 @@ module Ruote::Exp
         end
 
         target
+      end
+    end
+
+    protected
+
+    # Inspired by the one found in ActiveSupport, though not strictly equivalent.
+    #
+    def deep_merge!(target, source)
+
+      target.merge!(source) do |k, o, n|
+        o.is_a?(Hash) && n.is_a?(Hash) ? deep_merge!(o, n) : n
       end
     end
   end

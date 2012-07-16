@@ -1,5 +1,5 @@
 #--
-# Copyright (c) 2005-2011, John Mettraux, jmettraux@gmail.com
+# Copyright (c) 2005-2012, John Mettraux, jmettraux@gmail.com
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -30,6 +30,7 @@ require 'monitor'
 
 module Ruote
 
+  #
   # An in-memory storage.
   #
   class HashStorage
@@ -53,8 +54,6 @@ module Ruote
 
     def put(doc, opts={})
 
-      i = @h.size
-
       synchronize do
 
         pre = get(doc['type'], doc['_id'])
@@ -68,8 +67,7 @@ module Ruote
         end
 
         doc = if opts[:update_rev]
-          doc['_rev'] = pre ? pre['_rev'] : -1
-          doc
+          doc.merge!('_rev' => pre ? pre['_rev'] : -1)
         else
           doc.merge('_rev' => doc['_rev'] || -1)
         end
@@ -82,12 +80,12 @@ module Ruote
         nil
       end
 
-    rescue => e
-      puts "=" * 80
-      File.open('doc.json', 'wb') do |f|
-        f.puts Rufus::Json.pretty_encode(doc)
-      end
-      raise e
+    #rescue => e
+    #  puts "=" * 80
+    #  File.open('doc.json', 'wb') do |f|
+    #    f.puts Rufus::Json.pretty_encode(doc)
+    #  end
+    #  raise e
     end
 
     def get(type, key)
@@ -125,19 +123,16 @@ module Ruote
 
       synchronize do
 
-        keys = key ?
-          Array(key).map { |k| k.is_a?(String) ? "!#{k}" : k } : nil
-
-        docs = keys ?
-          @h[type].values.select { |doc|
-            Ruote::StorageBase.key_match?(keys, doc)
-          } :
+        docs = if key
+          keys = Array(key).map { |k| k.is_a?(String) ? "!#{k}" : k }
+          @h[type].values.select { |doc| key_match?(type, keys, doc) }
+        else
           @h[type].values
-
-        docs = docs.sort_by { |d| d['_id'] }
+        end
 
         return docs.size if opts[:count]
 
+        docs = docs.sort_by { |d| d['_id'] }
         docs = docs.reverse if opts[:descending]
 
         skip = opts[:skip] || 0
@@ -154,6 +149,24 @@ module Ruote
       @h[type].keys.sort
     end
 
+    #--
+    # keeping it commented out... using it for documentation efforts
+    #class NoisyHash < Hash
+    #  def initialize(type)
+    #    @type = type
+    #    super()
+    #  end
+    #  def []=(k, v)
+    #    puts "       + #{@type}.put #{k} #{v['_rev']}"
+    #    super
+    #  end
+    #  def delete(k)
+    #    puts "       - #{@type}.del #{k} "
+    #    super
+    #  end
+    #end
+    #++
+
     # Purges the storage completely.
     #
     def purge!
@@ -169,9 +182,8 @@ module Ruote
         configurations
         workitems
 
-      ].inject({}) { |h, k|
+      ].each_with_object({}) { |k, h|
         h[k] = {}
-        h
       }
 
       @h['configurations']['engine'] = @options
@@ -185,19 +197,6 @@ module Ruote
     def purge_type!(type)
 
       @h[type] = {}
-    end
-
-    def dump(type)
-
-      s = "=== #{type} ===\n"
-
-      @h[type].inject(s) do |s1, (k, v)|
-        s1 << "\n"
-        s1 << "#{k} :\n"
-        v.keys.sort.inject(s1) do |s2, k1|
-          s2 << "  #{k1} => #{v[k1].inspect}\n"
-        end
-      end
     end
 
     # Shuts this storage down.

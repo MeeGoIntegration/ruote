@@ -1,7 +1,7 @@
 
 = CREDITS
 
-Ruote is an open source Ruby workflow engine.
+(Ruote is an open source Ruby workflow engine)
 
 
 == The main project team
@@ -13,8 +13,16 @@ Kenneth Kalmer - http://www.opensourcery.co.za
 
 == Contributors
 
+Doug Bryant - re_dispatch bug
+Sjors - https://github.com/xtr3me - missing "concat" tactic for concurrence
+Islam Amer - https://github.com/iamer
+Nathan Stults - https://github.com/PlasticLizard - lots of help
+Akeem Adeniji - https://github.com/akeem - add_type and composite storage
+Bjoern Boettcher - https://github.com/doITdistributed - example fixing
+Julien France - https://github.com/xaop - concat/union merge types enhancements
+Simone Carletti - documentation, bug hunting and various ideas
 Raphael Simon - error handling + filters design
-Nando Sola - many help
+Nando Sola - lots of help
 Neil Pennell - http://github.com/npennel
 Patrick Gannon - fix for compatibility with ruote-mongodb
 Fix Peña - 'jump to' bug patch
@@ -44,6 +52,18 @@ Richard Jennings
 
 == Feedback
 
+tsdeng - https://github.com/tsdeng
+Klaus Schmidtmamn - sub_wf_name inspiration
+chaofan - https://github.com/chaofoan
+Nagender Reddy Paduru - various design discussions
+Chris Conley - https://github.com/chrisconley
+Jim "MarsBomber" Li - :merge_type => 'deep'
+John Roberts - idea for wait_for(:x, :or_error)
+Alex - https://github.com/alexw668
+Pedro Visintin - :remaining => 'wait'
+Christophe Malaurie - quickstart fix
+Juris Galang - https://github.com/jurisgalang (concurrence vs history issue)
+John 'jpgilman' - timed_out and name of the participant
 Pedro Texeira - add_tracker issue
 Greg Lazarev - composite storage issues
 Jan Topiński - https://github.com/simcha
@@ -58,7 +78,6 @@ Claudio Petasecca Donati - many help
 Daniel Neighman "hassox" - :on_timeout => "error" and many issue reports
 Eric Platon - engine.launch_single idea
 Marc Lee - storage.clear consistency
-Nathan Stults - enhanced dollar substitution and service
 Don H. French - Engine#register_from_dir idea
 Kaspar Schiess - http://github.com/kschiess
 Oleg (foenixx) - many suggestions and bug reports

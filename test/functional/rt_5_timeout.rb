@@ -5,8 +5,8 @@
 # Wed Oct 28 14:51:07 JST 2009
 #
 
-require File.join(File.dirname(__FILE__), 'base')
-require File.join(File.dirname(__FILE__), 'restart_base')
+require File.expand_path('../base', __FILE__)
+require File.expand_path('../restart_base', __FILE__)
 
 require 'ruote/part/null_participant'
 
@@ -25,18 +25,18 @@ class RtTimeoutTest < Test::Unit::TestCase
       participant 'alpha', :timeout => '2d'
     end
 
-    @engine.register_participant 'alpha', Ruote::NullParticipant
+    @dashboard.register_participant 'alpha', Ruote::NullParticipant
 
     #noisy
 
-    wfid = @engine.launch(pdef)
+    wfid = @dashboard.launch(pdef)
 
     wait_for(3)
 
-    assert_equal 1, @engine.processes.size
-    assert_equal 1, @engine.storage.get_many('schedules').size
+    assert_equal 1, @dashboard.processes.size
+    assert_equal 1, @dashboard.storage.get_many('schedules').size
 
-    @engine.shutdown
+    @dashboard.shutdown
 
     # restart...
 
@@ -44,17 +44,17 @@ class RtTimeoutTest < Test::Unit::TestCase
 
     #noisy
 
-    @engine.register_participant 'alpha', Ruote::NullParticipant
+    @dashboard.register_participant 'alpha', Ruote::NullParticipant
 
-    assert_equal 1, @engine.processes.size
-    assert_equal 1, @engine.storage.get_many('schedules').size
+    assert_equal 1, @dashboard.processes.size
+    assert_equal 1, @dashboard.storage.get_many('schedules').size
 
-    @engine.cancel_process(wfid)
+    @dashboard.cancel_process(wfid)
 
     wait_for(wfid)
 
-    assert_equal 0, @engine.processes.size
-    assert_equal 0, @engine.storage.get_many('schedules').size
+    assert_equal 0, @dashboard.processes.size
+    assert_equal 0, @dashboard.storage.get_many('schedules').size
   end
 end
 

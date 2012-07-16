@@ -5,7 +5,7 @@
 # Fri Jan  7 15:13:28 JST 2011
 #
 
-require File.join(File.dirname(__FILE__), 'base')
+require File.expand_path('../base', __FILE__)
 
 #require 'ruote/participant'
 
@@ -71,34 +71,36 @@ class FtPatternsTest < Test::Unit::TestCase
 
   def test_18_milestone
 
-    @engine.register do
+    @dashboard.register do
       catchall Ruote::StorageParticipant
     end
 
-    #@engine.noisy = true
+    #@dashboard.noisy = true
 
-    wfid = @engine.launch(MILESTONE)
+    wfid = @dashboard.launch(MILESTONE)
 
-    @engine.wait_for(:a)
+    @dashboard.wait_for(:a)
 
-    assert_equal({}, @engine.ps(wfid).tags)
+    assert_equal({}, @dashboard.ps(wfid).tags)
 
-    @engine.storage_participant.proceed(@engine.storage_participant.first)
+    @dashboard.storage_participant.proceed(@dashboard.storage_participant.first)
 
-    @engine.wait_for(:d)
+    @dashboard.wait_for(:d)
 
-    assert_equal %w[ milestone ], @engine.ps(wfid).tags.collect { |t| t.first }
-    assert_equal %w[ b d ], @engine.ps(wfid).position.collect { |pos| pos[1] }
+    assert_equal %w[ milestone ], @dashboard.ps(wfid).tags.collect { |t| t.first }
+    assert_equal %w[ b d ], @dashboard.ps(wfid).position.collect { |pos| pos[1] }
 
-    wi = @engine.storage_participant.by_participant('b').first
-    @engine.storage_participant.proceed(wi)
+    wi = @dashboard.storage_participant.by_participant('b').first
+    @dashboard.storage_participant.proceed(wi)
 
-    @engine.wait_for(:c)
+    @dashboard.wait_for(:c)
 
-    sleep 0.7 # give some time for the task d to get removed
+    @dashboard.wait_for('dispatch_cancel')
+    @dashboard.wait_for(1)
+      # give some time for the task d to get removed
 
-    assert_equal({}, @engine.ps(wfid).tags)
-    assert_equal %w[ c ], @engine.ps(wfid).position.collect { |pos| pos[1] }
+    assert_equal({}, @dashboard.ps(wfid).tags)
+    assert_equal %w[ c ], @dashboard.ps(wfid).position.collect { |pos| pos[1] }
   end
 end
 

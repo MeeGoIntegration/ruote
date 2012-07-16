@@ -5,7 +5,7 @@
 # Wed Jun 10 11:03:26 JST 2009
 #
 
-require File.join(File.dirname(__FILE__), 'base')
+require File.expand_path('../base', __FILE__)
 
 
 class FtParticipantConsumptionTest < Test::Unit::TestCase
@@ -19,20 +19,26 @@ class FtParticipantConsumptionTest < Test::Unit::TestCase
       end
     end
 
-    @engine.register_participant :alpha do |workitem|
-      @tracer << "#{workitem.participant_name}\n"
+    @dashboard.register_participant :alpha do |workitem|
+      tracer << "#{workitem.participant_name}\n"
     end
 
-    #noisy
+    #@dashboard.noisy = true
 
-    assert_trace('alpha', pdef)
-
-    Thread.pass
-      # making sure the reply to the participant expression is intercepted
-      # as well
+    wfid = @dashboard.launch(pdef)
+    @dashboard.wait_for('dispatched', 'receive', 'terminated')
 
     assert_equal(
-      3, logger.log.select { |e| e['participant_name'] == 'alpha' }.size)
+      'alpha',
+      @tracer.to_s)
+
+    assert_equal(
+      %w[ dispatch dispatched receive ],
+      logger.log.select { |e|
+        e['participant_name'] == 'alpha'
+      }.collect { |e|
+        e['action']
+      }.sort)
   end
 
   def test_missing_participant_name
@@ -45,11 +51,11 @@ class FtParticipantConsumptionTest < Test::Unit::TestCase
 
     #noisy
 
-    wfid = @engine.launch(pdef)
+    wfid = @dashboard.launch(pdef)
 
     wait_for(wfid)
 
-    ps = @engine.process(wfid)
+    ps = @dashboard.process(wfid)
 
     assert_equal(
       1, ps.errors.size)
@@ -65,8 +71,8 @@ class FtParticipantConsumptionTest < Test::Unit::TestCase
       end
     end
 
-    @engine.register_participant '.*' do |workitem|
-      @tracer << "#{workitem.participant_name} #{workitem.fei.expid}\n"
+    @dashboard.register_participant '.*' do |workitem|
+      tracer << "#{workitem.participant_name} #{workitem.fei.expid}\n"
     end
 
     assert_trace('alpha 0_0_0', pdef)
@@ -74,11 +80,11 @@ class FtParticipantConsumptionTest < Test::Unit::TestCase
 
   def test_dispatch_time
 
-    @engine.context.stash[:wis] = []
+    @dashboard.context.stash[:wis] = []
 
     pdef = Ruote.process_definition { alpha; alpha }
 
-    @engine.register_participant 'alpha' do |workitem|
+    @dashboard.register_participant 'alpha' do |workitem|
       stash[:wis] << workitem.to_h.dup
     end
 
@@ -86,11 +92,11 @@ class FtParticipantConsumptionTest < Test::Unit::TestCase
 
     assert_equal(
       String,
-      @engine.context.stash[:wis].first['fields']['dispatched_at'].class)
+      @dashboard.context.stash[:wis].first['fields']['dispatched_at'].class)
 
     assert_not_equal(
-      @engine.context.stash[:wis].first['fields']['dispathed_at'],
-      @engine.context.stash[:wis].last['fields']['dispatched_at'])
+      @dashboard.context.stash[:wis].first['fields']['dispathed_at'],
+      @dashboard.context.stash[:wis].last['fields']['dispatched_at'])
   end
 
   class MyParticipant
@@ -112,11 +118,11 @@ class FtParticipantConsumptionTest < Test::Unit::TestCase
       alpha
     end
 
-    @engine.register_participant :alpha, MyParticipant
+    @dashboard.register_participant :alpha, MyParticipant
 
-    wfid = @engine.launch(pdef, 'msg' => 'kilroy')
+    wfid = @dashboard.launch(pdef, 'msg' => 'kilroy')
 
-    @engine.wait_for(wfid)
+    @dashboard.wait_for(wfid)
 
     assert_equal 'kilroy', @tracer.to_s
   end

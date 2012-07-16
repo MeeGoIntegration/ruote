@@ -1,5 +1,5 @@
 #--
-# Copyright (c) 2005-2011, John Mettraux, jmettraux@gmail.com
+# Copyright (c) 2005-2012, John Mettraux, jmettraux@gmail.com
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -52,8 +52,8 @@ module Ruote::Exp
 
     def self.apply?(sif, sunless)
 
-      return (true?(sif)) if sif
-      return ( ! true?(sunless)) if sunless
+      return (true?(sif)) if sif != nil
+      return ( ! true?(sunless)) if sunless != nil
 
       true
     end
@@ -65,9 +65,8 @@ module Ruote::Exp
       conditional = unescape(conditional.to_s)
 
       REGEXES.each do |method, regex|
-        if m = regex.match(conditional)
-          return self.send(method, m)
-        end
+        m = regex.match(conditional)
+        return self.send(method, m) if m
       end
 
       evl(conditional) ? true : false
@@ -75,6 +74,13 @@ module Ruote::Exp
     rescue ArgumentError => ae
 
       raise ConditionError.new(conditional)
+    end
+
+    # Returns true if the given conditional string evaluates to false.
+    #
+    def self.false?(conditional)
+
+      ( ! true?(conditional))
     end
 
     # Evaluates the given [conditional] code string and returns the
@@ -95,19 +101,13 @@ module Ruote::Exp
 
     def self.parse(conditional)
 
-      Rufus::TreeChecker.parse(conditional)
-
-    rescue NoMethodError => nme
-
-      raise NoMethodError.new(
-        "/!\\ please upgrade your rufus-treechecker gem /!\\"
-      )
+      Ruote.parse_ruby(conditional)
 
     rescue SyntaxError => se
 
       [ :str, conditional ]
 
-    rescue Exception => e
+    rescue => e
 
       [ :false ]
     end

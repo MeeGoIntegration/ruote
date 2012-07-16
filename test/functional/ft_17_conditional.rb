@@ -5,7 +5,7 @@
 # Fri Jul  3 19:46:22 JST 2009
 #
 
-require File.join(File.dirname(__FILE__), 'base')
+require File.expand_path('../base', __FILE__)
 
 
 class FtConditionalTest < Test::Unit::TestCase
@@ -97,6 +97,46 @@ class FtConditionalTest < Test::Unit::TestCase
     end
 
     assert_trace(%w[ true/false a b d f ], pdef)
+  end
+
+  def test_if_booleans
+
+    pdef = Ruote.define do
+
+      echo 'a', :if => true
+      echo '.'
+      echo 'b', :if => 'true'
+      echo '.'
+      echo 'c', :if => false
+      echo '.'
+      echo 'd', :if => 'false'
+    end
+
+    wfid = @dashboard.launch(pdef)
+    r = @dashboard.wait_for(wfid)
+
+    assert_equal 'terminated', r['action']
+    assert_equal 'a.b..', @tracer.to_a.join
+  end
+
+  def test_unless_booleans
+
+    pdef = Ruote.define do
+
+      echo 'a', :unless => true
+      echo '.'
+      echo 'b', :unless => 'true'
+      echo '.'
+      echo 'c', :unless => false
+      echo '.'
+      echo 'd', :unless => 'false'
+    end
+
+    wfid = @dashboard.launch(pdef)
+    r = @dashboard.wait_for(wfid)
+
+    assert_equal 'terminated', r['action']
+    assert_equal '..c.d', @tracer.to_a.join
   end
 end
 

@@ -1,5 +1,5 @@
 #--
-# Copyright (c) 2005-2011, John Mettraux, jmettraux@gmail.com
+# Copyright (c) 2005-2012, John Mettraux, jmettraux@gmail.com
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -76,7 +76,13 @@ module Ruote::Exp
 
         workitem['fields'] =
           Ruote.filter(
-            filter, workitem['fields'], :double_tilde => h.fields_pre_filter)
+            filter,
+            workitem['fields'],
+            :double_tilde =>
+              h.fields_pre_filter || h.applied_workitem['fields'])
+
+        workitem['fields'].delete('params')
+          # take and discard tend to copy it over, so let's remove it
       end
     end
 
@@ -85,21 +91,41 @@ module Ruote::Exp
     #
     # Returns nil, if there is no filter. Raises an ArgumentError if the
     # filter is not usable. Returns the instantiated participant if the
-    # filter points to one.
+    # filter points to a participant filter.
     #
     def lookup_filter(workitem)
 
       f = attribute(:filter)
 
+      if f.nil? and workitem
+
+        reply = if t = attribute(:take)
+          Array(t).collect { |tt| { 'field' => tt, 'take' => true } }
+        elsif d = attribute(:discard)
+          if d == true
+            [ { 'field' => /.+/, 'discard' => 'all' } ]
+          else
+            Array(d).collect { |dd| { 'field' => dd, 'discard' => true } }
+          end
+        else
+          nil
+        end
+
+        f = { 'reply' => reply } if reply
+      end
+
       return nil unless f
+        # no filter
+
+      if f.is_a?(Hash)
+        f['in'] = [] unless f['in'] or f['apply']
+        f['out'] = [] unless f['out'] or f['reply']
+      end
+        # empty ins and outs for a sucessful narrowing
 
       3.times { f = narrow_filter(f, workitem) }
 
-      raise ArgumentError.new(
-        "found no filter corresponding to '#{f}'"
-      ) unless f
-
-      f
+      f or raise ArgumentError.new("found no filter corresponding to '#{f}'")
     end
 
     # Called successively to dig for the filter (Array or Participant).

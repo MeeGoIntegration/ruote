@@ -1,5 +1,5 @@
 #--
-# Copyright (c) 2005-2011, John Mettraux, jmettraux@gmail.com
+# Copyright (c) 2005-2012, John Mettraux, jmettraux@gmail.com
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -21,6 +21,8 @@
 #
 # Made in Japan.
 #++
+
+require 'socket'
 
 
 module Ruote
@@ -82,7 +84,7 @@ module Ruote
       value = fulldup(value)
       begin
         o.instance_variable_set(v, value)
-      rescue => e
+      rescue
         # ignore, must be readonly
       end
     end
@@ -124,22 +126,13 @@ module Ruote
     s.split('::').inject(Object) { |c, n| n == '' ? c : c.const_get(n) }
   end
 
-#  # Upon receiving something like
-#  #
-#  #   "(?-mix:nada)"
-#  #
-#  # will return
-#  #
-#  #   /nada/
-#  #
-#  def self.regex_from_s(s)
-#
-#    if s.is_a?(String) && m = s.match(/^\(\?-mix:(.+)\)$/)
-#      Regexp.new(m[1])
-#    else
-#      nil
-#    end
-#  end
+  # Makes sure all they keys in the given hash are turned into strings
+  # in the resulting hash.
+  #
+  def self.keys_to_s(h)
+
+    h.remap { |(k, v), h| h[k.to_s] = v }
+  end
 
   REGEX_IN_STRING = /^\s*\/(.*)\/\s*$/
 
@@ -154,6 +147,48 @@ module Ruote
     else
       s
     end
+  end
+
+  # From http://coderrr.wordpress.com/2008/05/28/get-your-local-ip-address/
+  #
+  # Returns the (one of the) local IP address.
+  #
+  def self.local_ip
+
+    orig, Socket.do_not_reverse_lookup = Socket.do_not_reverse_lookup, true
+      # turn off reverse DNS resolution temporarily
+
+    UDPSocket.open do |s|
+      s.connect('64.233.187.99', 1)
+      s.addr.last
+    end
+
+  rescue
+
+    nil
+
+  ensure
+    Socket.do_not_reverse_lookup = orig
+  end
+
+  # Attempts to parse a string of Ruby code (and return the AST).
+  #
+  def self.parse_ruby(ruby_string)
+
+    Rufus::TreeChecker.parse(ruby_string)
+
+  rescue NoMethodError
+
+    raise NoMethodError.new(
+      "/!\\ please upgrade your rufus-treechecker gem /!\\")
+  end
+
+  # Returns an array. If the argument is an array, return it as is. Else
+  # turns the argument into a string and "comma splits" it.
+  #
+  def self.comma_split(o)
+
+    o.is_a?(Array) ? o : o.to_s.split(/\s*,\s*/).collect { |e| e.strip }
   end
 end
 

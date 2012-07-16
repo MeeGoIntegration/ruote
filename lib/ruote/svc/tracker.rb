@@ -1,5 +1,5 @@
 #--
-# Copyright (c) 2005-2011, John Mettraux, jmettraux@gmail.com
+# Copyright (c) 2005-2012, John Mettraux, jmettraux@gmail.com
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -37,24 +37,12 @@ module Ruote
     def initialize(context)
 
       @context = context
-
-      if @context.worker
-        #
-        # this is a worker context, DO log
-        #
-        @context.worker.subscribe(:all, self)
-      #else
-        #
-        # this is not a worker context, no notifications. BUT
-        # honour calls to add_tracker/remove_tracker
-        #
-      end
     end
 
-    # The worker passes all the messages it has to process to the tracker via
-    # this method.
+    # The context calls this method for each successfully processed msg
+    # in the worker.
     #
-    def notify(message)
+    def on_msg(message)
 
       m_error = message['error']
       m_wfid = message['wfid'] || (message['fei']['wfid'] rescue nil)
@@ -114,6 +102,9 @@ module Ruote
     #
     def add_tracker(wfid, action, id, conditions, msg)
 
+      conditions =
+        conditions && conditions.remap { |(k, v), h| h[k] = Array(v) }
+
       doc = @context.storage.get_trackers
 
       doc['trackers'][id] =
@@ -152,17 +143,21 @@ module Ruote
 
       conditions.each do |k, v|
 
-        if k == 'class'
-          return false unless v.include?(msg['error']['class'])
-          next
+        return false unless Array(v).find do |vv|
+
+          # the Array(v) is for backward compatibility, although newer
+          # track conditions are already stored as arrays.
+
+          vv = Ruote.regex_or_s(vv)
+
+          val = case k
+            when 'class' then msg['error']['class']
+            when 'message' then msg['error']['message']
+            else msg[k]
+          end
+
+          val && (vv.is_a?(String) ? (vv == val) : vv.match(val))
         end
-
-        v = Ruote.regex_or_s(v)
-
-        val = msg[k]
-        val = msg['error']['message'] if k == 'message'
-
-        return false unless val && v.is_a?(String) ? (v == val) : v.match(val)
       end
 
       true

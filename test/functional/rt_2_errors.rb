@@ -5,8 +5,8 @@
 # Thu Jul 16 13:49:09 JST 2009
 #
 
-require File.join(File.dirname(__FILE__), 'base')
-require File.join(File.dirname(__FILE__), 'restart_base')
+require File.expand_path('../base', __FILE__)
+require File.expand_path('../restart_base', __FILE__)
 
 
 class RtErrorsTest < Test::Unit::TestCase
@@ -23,34 +23,34 @@ class RtErrorsTest < Test::Unit::TestCase
       end
     end
 
-    #noisy
+    #@dashboard.noisy = true
 
-    wfid = @engine.launch(pdef)
+    wfid = @dashboard.launch(pdef)
 
-    wait_for(3)
+    wait_for(wfid)
 
-    ps = @engine.process(wfid)
+    ps = @dashboard.process(wfid)
 
     assert_equal 1, ps.errors.size
 
-    @engine.shutdown
+    @dashboard.shutdown
 
     # restart...
 
     start_new_engine
 
-    #noisy
+    #@dashboard.noisy = true
 
-    assert_equal 1, @engine.processes.size
+    assert_equal 1, @dashboard.processes.size
 
-    ps = @engine.process(wfid)
+    ps = @dashboard.process(wfid)
     assert_equal 1, ps.errors.size
 
-    @engine.cancel_process(wfid)
+    @dashboard.cancel_process(wfid)
 
     wait_for(wfid)
 
-    assert_nil @engine.process(wfid)
+    assert_nil @dashboard.process(wfid)
   end
 end
 

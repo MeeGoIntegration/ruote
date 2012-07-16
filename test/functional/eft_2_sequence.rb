@@ -5,7 +5,7 @@
 # Sat Jan 24 22:40:35 JST 2009
 #
 
-require File.join(File.dirname(__FILE__), 'base')
+require File.expand_path('../base', __FILE__)
 
 
 class EftSequenceTest < Test::Unit::TestCase
@@ -32,7 +32,7 @@ class EftSequenceTest < Test::Unit::TestCase
       end
     end
 
-    #noisy
+    #@dashboard.noisy = true
 
     assert_trace("a\nb", pdef)
   end
@@ -46,13 +46,32 @@ class EftSequenceTest < Test::Unit::TestCase
       end
     end
 
-    @engine.register_participant '.+' do |workitem|
-      @tracer << workitem.participant_name + "\n"
+    @dashboard.register_participant '.+' do |workitem|
+      context.tracer << workitem.participant_name + "\n"
     end
 
     #noisy
 
     assert_trace("alice\nbob", pdef)
+  end
+
+  # Fri Dec 24 15:35:17 JST 2010
+  #
+  def test_let
+
+    pdef = Ruote.process_definition do
+      set 'v:var' => 'val'
+      echo "out:${v:var}"
+      let do
+        set 'v:var' => 'val1'
+        echo "in:${v:var}"
+      end
+      echo "out:${v:var}"
+    end
+
+    #noisy
+
+    assert_trace %w[ out:val in:val1 out:val ], pdef
   end
 end
 

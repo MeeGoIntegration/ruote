@@ -5,7 +5,7 @@
 # Mon Aug  3 19:19:58 JST 2009
 #
 
-require File.join(File.dirname(__FILE__), '..', 'test_helper.rb')
+require File.expand_path('../../test_helper', __FILE__)
 
 require 'ruote/util/lookup'
 
@@ -16,6 +16,12 @@ class LookupTest < Test::Unit::TestCase
 
     assert_equal(%w[ A B C ], Ruote.lookup({ 'h' => %w[ A B C ] }, 'h'))
     assert_equal('B', Ruote.lookup({ 'h' => %w[ A B C ] }, 'h.1'))
+  end
+
+  def test_hash_lookup_and_number_keys
+
+    assert_equal('B', Ruote.lookup({ '1' => %w[ A B C ] }, '1.1'))
+    assert_equal('B', Ruote.lookup({ 1 => %w[ A B C ] }, '1.1'))
   end
 
   def test_lookup_dot
@@ -54,6 +60,21 @@ class LookupTest < Test::Unit::TestCase
       Ruote.lookup({ 'h' => { 'hh' => %w[ A B C ]} }, 'nada.nada', true))
   end
 
+  def test_has_key
+
+    h = { 'h' => %w[ a b c ] }
+
+    assert_equal(true, Ruote.has_key?(h, 'h'))
+    assert_equal(true, Ruote.has_key?(h, 'h.1'))
+
+    h = { 'foo' => { 'bar' => { 'baz' => { 'fruit' => 'pineapple' } } } }
+
+    assert_equal(true, Ruote.has_key?(h, 'foo.bar.baz.fruit'))
+    assert_equal(true, Ruote.has_key?(h, 'foo.bar'))
+
+    assert_equal(false, Ruote.has_key?(h, 'bar'))
+  end
+
   def test_set
 
     h = { 'customer' => { 'name' => 'alpha' } }
@@ -80,7 +101,15 @@ class LookupTest < Test::Unit::TestCase
     h = {}
     Ruote.set(h, 'customer.name', 'bravo')
 
-    assert_equal({"customer.name"=>"bravo"}, h)
+    assert_equal({ 'customer.name' => 'bravo' }, h)
+  end
+
+  def test_set_integer_corner_case
+
+    h = {}
+    Ruote.set(h, '0_0_1', 'charly')
+
+    assert_equal({ '0_0_1' => 'charly' }, h)
   end
 
   def test_hash_unset

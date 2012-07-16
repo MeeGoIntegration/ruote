@@ -1,5 +1,5 @@
 #--
-# Copyright (c) 2005-2011, John Mettraux, jmettraux@gmail.com
+# Copyright (c) 2005-2012, John Mettraux, jmettraux@gmail.com
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -37,19 +37,16 @@ module Ruote
     SERVICE_PREFIX = /^s\_/
 
     attr_reader :storage
-    attr_accessor :worker
-    attr_accessor :engine
+    attr_accessor :dashboard
 
-    def initialize(storage, worker=nil)
+    def initialize(storage)
 
       @storage = storage
       @storage.context = self
 
-      @engine = nil
-      @worker = worker
+      @dashboard = nil
 
       @services = {}
-
       initialize_services
     end
 
@@ -64,6 +61,19 @@ module Ruote
     def context
 
       self
+    end
+
+    # Let's make sure Context always responds to #storage, #dashboard (#engine)
+    # and #worker.
+    #
+    alias engine dashboard
+
+    # Let's make sure Context always responds to #storage, #dashboard (#engine)
+    # and #worker.
+    #
+    def worker
+
+      @services['s_worker']
     end
 
     # Returns the engine_id (as set in the configuration under the key
@@ -95,56 +105,109 @@ module Ruote
 
       cf = get_conf
       cf[key] = value
+
       @storage.put(cf)
+        # TODO blindly trust the put ? retry in case of failure ?
 
       value
     end
 
+    # Configuration keys and service keys.
+    #
     def keys
 
-      get_conf.keys
+      (@services.keys + get_conf.keys).uniq.sort
     end
 
+    # Called by Ruote::Dashboard#add_service
+    #
     def add_service(key, *args)
 
+      raise ArgumentError.new(
+        '#add_service: at least two arguments please'
+      ) if args.empty?
+
+      key = key.to_s
       path, klass, opts = args
 
       key = "s_#{key}" unless SERVICE_PREFIX.match(key)
 
+      aa = [ self, opts ].compact
+
       service = if klass
 
-        require(path) if path
-
-        aa = [ self ]
-        aa << opts if opts
+        require(path)
 
         @services[key] = Ruote.constantize(klass).new(*aa)
+
+      elsif path.is_a?(Class)
+
+        @services[key] = path.new(*aa)
+
       else
 
         @services[key] = path
       end
 
-      self.class.class_eval %{ def #{key[2..-1]}; @services['#{key}']; end }
-        #
-        # This 'one-liner' will add an instance method to Context for this
-        # service.
-        #
-        # If the service key is 's_dishwasher', then the service will be
-        # available via Context#dishwasher.
-        #
-        # I.e. dishwasher = engine.context.dishwasher
+      (class << self; self; end).class_eval(
+        %{ def #{key[2..-1]}; @services['#{key}']; end })
+          #
+          # This 'two-liner' will add an instance method to Context for this
+          # service.
+          #
+          # If the service key is 's_dishwasher', then the service will be
+          # available via Context#dishwasher.
+          #
+          # I.e. dishwasher = engine.context.dishwasher
 
       service
+    end
+
+    # This method is called by the worker each time it sucessfully processed
+    # a msg. This method calls in turn the #on_msg method for each of the
+    # services (that respond to that method).
+    #
+    # Makes sure that observers that respond to #wait_for are called last.
+    #
+    def notify(msg)
+
+      waiters, observers = @services.values.select { |s|
+        s.respond_to?(:on_msg)
+      }.partition { |s|
+        s.respond_to?(:wait_for)
+      }
+
+      (observers + waiters).each { |o| o.on_msg(msg) }
     end
 
     # Takes care of shutting down every service registered in this context.
     #
     def shutdown
 
-      @worker.shutdown if @worker
-      @storage.shutdown if @storage.respond_to?(:shutdown)
+      ([ @storage ] + @services.values).each do |s|
+        s.shutdown if s.respond_to?(:shutdown)
+      end
+    end
 
-      @services.values.each { |s| s.shutdown if s.respond_to?(:shutdown) }
+    alias engine dashboard
+    alias engine= dashboard=
+
+    # Returns true if this context has a given service registered.
+    #
+    def has_service?(service_name)
+
+      service_name = service_name.to_s
+      service_name = "s_#{service_name}" if ! SERVICE_PREFIX.match(service_name)
+
+      @services.has_key?(service_name)
+    end
+
+    # List of services in this context, sorted by their name in alphabetical
+    # order.
+    #
+    def services
+
+      @services.keys.sort.collect { |k| @services[k] }
     end
 
     protected
@@ -158,9 +221,7 @@ module Ruote
 
       default_conf.merge(get_conf).each do |key, value|
 
-        next unless SERVICE_PREFIX.match(key)
-
-        add_service(key, *value)
+        add_service(key, *value) if SERVICE_PREFIX.match(key)
       end
     end
 
@@ -188,6 +249,31 @@ module Ruote
           'ruote/log/wait_logger', 'Ruote::WaitLogger' ],
         's_history' => [
           'ruote/log/default_history', 'Ruote::DefaultHistory' ] }
+    end
+  end
+
+  #
+  # A minimal context, useful for testing expressions in isolation.
+  #
+  class TestContext < Context
+
+    def initialize
+
+      @services = {}
+      initialize_services
+    end
+
+    protected
+
+    def get_conf
+
+      {}
+    end
+
+    def default_conf
+
+      { 's_dollar_sub' => [
+          'ruote/svc/dollar_sub', 'Ruote::DollarSubstitution' ] }
     end
   end
 end

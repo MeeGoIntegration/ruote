@@ -7,13 +7,15 @@
 # Singapore
 #
 
-require File.join(File.dirname(__FILE__), 'base')
+require File.expand_path('../base', __FILE__)
 
 
 class FtParticipantCodeTest < Test::Unit::TestCase
   include FunctionalBase
 
   def test_block_participant
+
+    @dashboard.context['participant_in_variable_enabled'] = true
 
     pdef = Ruote.process_definition :name => 'def0' do
 
@@ -27,11 +29,9 @@ class FtParticipantCodeTest < Test::Unit::TestCase
       alpha
     end
 
-    #@engine.noisy = true
+    wfid = @dashboard.launch(pdef)
 
-    wfid = @engine.launch(pdef)
-
-    r = @engine.wait_for(wfid)
+    r = @dashboard.wait_for(wfid)
 
     assert_equal(
       { 'alpha' => 'alpha', 'x' => 0, '__result__' => 0 },
@@ -39,6 +39,8 @@ class FtParticipantCodeTest < Test::Unit::TestCase
   end
 
   def test_code_participant
+
+    @dashboard.context['participant_in_variable_enabled'] = true
 
     pdef = Ruote.process_definition do
 
@@ -53,11 +55,9 @@ class FtParticipantCodeTest < Test::Unit::TestCase
       alpha
     end
 
-    #@engine.noisy = true
+    wfid = @dashboard.launch(pdef)
 
-    wfid = @engine.launch(pdef)
-
-    r = @engine.wait_for(wfid)
+    r = @dashboard.wait_for(wfid)
 
     assert_equal(
       { 'x' => 0, 'alpha' => 'alpha' },

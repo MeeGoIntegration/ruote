@@ -1,5 +1,5 @@
 #--
-# Copyright (c) 2005-2011, John Mettraux, jmettraux@gmail.com
+# Copyright (c) 2005-2012, John Mettraux, jmettraux@gmail.com
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -88,6 +88,10 @@ module Ruote::Exp
     include CommandMixin
 
     names :skip, :back, :jump, :rewind, :continue, :break, :stop, :over, :reset
+
+    # Used by FlowExpression when dealing with :on_error or :on_timeout
+    #
+    REGEXP = Regexp.new("^(#{expression_names.join('|')})( .+)?$")
 
     def apply
 

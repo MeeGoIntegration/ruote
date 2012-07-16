@@ -1,5 +1,5 @@
 #--
-# Copyright (c) 2005-2011, John Mettraux, jmettraux@gmail.com
+# Copyright (c) 2005-2012, John Mettraux, jmettraux@gmail.com
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -65,10 +65,8 @@ module Ruote
 
       elsif text.is_a?(Hash)
 
-        text.inject({}) { |h, (k, v)|
-
+        text.remap { |(k, v), h|
           h[s(k, flow_expression, workitem)] = s(v, flow_expression, workitem)
-          h
         }
 
       else
@@ -90,7 +88,7 @@ module Ruote
 
     # If the final text is of the form "$f:x" or "$v:y" will lookup the
     # x field or the y variable. If the lookup is successful (not nil) will
-    # return the, not the text.
+    # return the value, not the text (the value.to_s).
     #
     def literal_sub(s, fexp, wi)
 
@@ -123,9 +121,9 @@ module Ruote
       attr_reader :fexp
       attr_reader :workitem
 
-      def initialize(flowexpression, workitem)
+      def initialize(flow_expression, workitem)
 
-        @fexp = flowexpression
+        @fexp = flow_expression
         @workitem = workitem
       end
 
@@ -137,6 +135,11 @@ module Ruote
         return @fexp.fei.subid if key == 'sub_wfid' # deprecated in 2.1.12
         return @fexp.fei.expid if key == 'expid'
         return @fexp.fei.engine_id if key == 'engine_id'
+        return @fexp.fei.mnemo_id if key == 'mnemo_id'
+
+        return @workitem['fields']['__tags__'] if key == 'tags'
+        return (@workitem['fields']['__tags__'] || []).last if key == 'tag'
+        return (@workitem['fields']['__tags__'] || []).join('/') if key == 'full_tag'
 
         pr, k = extract_prefix(key)
 

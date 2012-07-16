@@ -1,5 +1,5 @@
 #--
-# Copyright (c) 2005-2011, John Mettraux, jmettraux@gmail.com
+# Copyright (c) 2005-2012, John Mettraux, jmettraux@gmail.com
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -21,9 +21,6 @@
 #
 # Made in Japan.
 #++
-
-
-require 'ruote/exp/fe_set'
 
 
 module Ruote::Exp
@@ -75,8 +72,8 @@ module Ruote::Exp
   #     set 'v:x' => %w[ a b c d ]
   #     repeat do
   #       dec 'v:x', :pos => 'head'
-  #       _break :unless => '${v:d}'
-  #       participant '${v:d}'
+  #       _break :unless => '${__result__}'
+  #       participant '${__result__}'
   #     end
   #   end
   #
@@ -108,7 +105,7 @@ module Ruote::Exp
   #   dec 'v:x', :val => 'bryan'
   #     # the variable 'x' now holds [ 'alfred', 'carl' ]
   #
-  # 'dec' places the removed value in the local variable named 'd'. This trick
+  # 'dec' places the removed value in workitem field '__result__'. This trick
   # was used in the above iterator example.
   #
   # A specific variable or field can be specified via the :to_var / :to_field
@@ -117,64 +114,136 @@ module Ruote::Exp
   #   dec 'v:x', :to_v => 'a'
   #   participant :ref => '${v:a}'
   #
-  class IncExpression < SetExpression
+  #
+  # == nested value
+  #
+  # (Since ruote 2.3.0)
+  #
+  # If nested expressions are provided the __result__ workitem field is
+  # used for inc.
+  #
+  #   inc 'v:x' do
+  #     set '__result__' => 3
+  #   end
+  #
+  # will increase the value of the variable x by 3.
+  #
+  #
+  # == push and pop
+  #
+  # push and pop are aliases for inc and dec respectively. There is a major
+  # difference though: they'll force the target value into an array.
+  #
+  #   sequence do
+  #     set 'v:x' => 2
+  #     push 'v:x' => 3
+  #   end
+  #
+  # will result in a variable x holding [ 2, 3 ] as value.
+  #
+  # Likewise,
+  #
+  #   pop 'v:x'
+  #
+  # will force a value of [] into the variable x if it wasn't previously set
+  # or its value was not an array with more than one element.
+  #
+  class IncExpression < SequenceExpression
 
-    names :inc, :dec, :increment, :decrement
+    names :inc, :dec, :increment, :decrement, :push, :pop
 
     def apply
 
-      if var_key = has_attribute(:v, :var, :variable)
+      h.variables ||= {} # ensures a local scope
+
+      reply(h.applied_workitem)
+    end
+
+    def reply_to_parent(workitem)
+
+      h.applied_workitem['fields'] = workitem['fields']
+
+      key, value = if var_key = has_attribute(:v, :var, :variable)
 
         var = attribute(var_key)
-        set_v(var, new_value(:var, var))
+
+        [ "v:#{var}", new_value(:var, var, nil) ]
 
       elsif field_key = has_attribute(:f, :fld, :field)
 
         field = attribute(field_key)
-        set_f(field, new_value(:field, field))
+
+        [ field, new_value(:field, field, nil) ]
+
+      elsif k = att_text
+
+        [ k, new_value(nil, k, nil) ]
+
+      elsif kv = find_kv
+
+        k, v = kv
+
+        [ k, new_value(nil, k, v) ]
 
       else
 
-        k = attribute_text
-
-        raise(
-          ArgumentError.new('no variable or field to increment/decrement')
-        ) if k.length < 1
-
-        set_vf(k, new_value(nil, k))
-
-      #else
-      #  raise ArgumentError.new(
-      #    "missing a variable or field target in #{tree.inspect}")
+        raise(ArgumentError.new('no variable or field to increment/decrement'))
       end
 
-      reply_to_parent(h.applied_workitem)
-    end
+      h.variables = nil
+        # the local scope is over,
+        # variables set here will be set in the parent scope
 
-    def reply(workitem)
+      if dec? && value.is_a?(Array)
+        k, car, value = value
+        set_vf(k || '__result__', car)
+      end
 
-      # never called
+      set_vf(key, value)
+
+      super(h.applied_workitem)
     end
 
     protected
 
-    def new_value(type, key)
+    def find_kv
 
-      dec = name.match(/^dec/)
+      compile_atts.reject { |k, v|
+        COMMON_ATT_KEYS.include?(k) ||
+        k.match(/^to_/)
+      }.first
+    end
+
+    def dec?
+
+      @dec ||= !!(name.match(/^dec/) or name == 'pop')
+    end
+
+    def new_value(type, key, increment)
 
       if type == nil && m = PREFIX_REGEX.match(key)
         type = (m[1][0, 1] == 'f' ? :field : :var)
         key = m[2]
       end
 
-      delta = lookup_val
+      delta = increment.nil? ? lookup_val : increment
+
+      if delta.nil? && @msg && @msg['action'] == 'reply'
+        delta = h.applied_workitem['fields']['__result__']
+      end
 
       ndelta = Ruote.narrow_to_number(delta || 1)
-      ndelta = -ndelta if dec && ndelta
+      ndelta = -ndelta if dec? && ndelta
 
       value = type == :var ?
         lookup_variable(key) :
         Ruote.lookup(h.applied_workitem['fields'], key)
+
+      value = case value
+        when NilClass then []
+        when Array then value
+        else [ value ]
+      end if (name == 'push' || name == 'pop')
 
       pos = attribute(:position) || attribute(:pos)
 
@@ -183,10 +252,7 @@ module Ruote::Exp
       pos ||= 'tail'
       value ||= []
 
-      return (pos == 'tail' ? value + [ delta ] : [ delta ] + value) unless dec
-
-      to_v, to_f = determine_tos
-      to_v = 'd' if to_v.nil? && to_f.nil?
+      return (pos == 'tail' ? value + [ delta ] : [ delta ] + value) unless dec?
 
       car, cdr = if delta != nil
         (value.delete(delta) != nil ) ? [ delta, value ] : [ nil, value ]
@@ -196,9 +262,10 @@ module Ruote::Exp
         [ value[0], value[1..-1] ]
       end
 
-      to_v ? set_v(to_v, car) : set_f(to_f, car)
+      to_v, to_f = determine_tos
+      key = to_v ? "v:#{to_v}" : to_f
 
-      cdr
+      [ key, car, cdr ]
     end
   end
 end
