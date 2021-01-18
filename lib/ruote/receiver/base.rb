@@ -206,6 +206,7 @@ module Ruote
         'workitem' => { 'fields' => fields },
         'variables' => variables,
         'stash' => root_stash)
+      puts "Launched\n:#{process_definition}\nas wfid #{wfid}\n" if @context.logger.noisy
 
       wfid
     end
