@@ -46,7 +46,7 @@ module Ruote
     def msg;      @h['msg']; end
     def details;  @h['details']; end
     def tree;     @h['msg']['tree']; end
-    def at;       @h['msg']['put_at']; end
+    def at;       @h['put_at']; end
 
     def wfid;  msg['fei']['wfid']; end
 
